@@ -22,6 +22,7 @@ import { dateTime, int, mult, num, pct, relativeTime } from "@/lib/format";
 import { getDataset } from "@/services/dataset";
 import { loadBacktest, loadOverview } from "@/services/views";
 import { ModelPerformance } from "@/components/lab/model-performance";
+import { ProvenanceChip } from "@/components/layout/provenance";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -58,7 +59,7 @@ export default async function DashboardPage() {
   return (
     <>
       <PageHeader
-        eyebrow={dataset === "demo" ? "Overview · demo dataset" : "Overview"}
+        eyebrow={`Overview · ${dataset.toUpperCase()} DATA`}
         title={
           <>
             {int(stats.count)} rounds analysed.
@@ -68,6 +69,7 @@ export default async function DashboardPage() {
         description="Descriptive statistics of stored history and the latest model output. Statistics describe the past; they are not forecasts."
         actions={
           <>
+            <ProvenanceChip dataset={dataset} className="h-10 px-4 text-xs" />
             <Link href="/backtest" className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-b from-[#8a99ff] to-[#6274f5] px-4 text-sm font-medium text-white shadow-[0_8px_24px_-8px_rgb(123_140_255/0.6)] transition hover:brightness-110">
               Does the model work? <ArrowUpRight className="size-4" />
             </Link>
@@ -95,7 +97,7 @@ export default async function DashboardPage() {
 
       {bt.run && bt.evaluation && (
         <Section className="mt-6 md:mt-8">
-          <ModelPerformance evaluation={bt.evaluation} modelVersion={bt.run.model_version} testWindowRuns={bt.testWindowRuns} />
+          <ModelPerformance evaluation={bt.evaluation} modelVersion={bt.run.model_version} testWindowRuns={bt.testWindowRuns} dataset={dataset} />
         </Section>
       )}
 

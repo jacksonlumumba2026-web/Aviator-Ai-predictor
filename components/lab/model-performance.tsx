@@ -3,6 +3,8 @@ import { AlertTriangle, ArrowUpRight, Gauge } from "lucide-react";
 import type { BacktestEvaluation, SignalLevel } from "@/lib/evaluation";
 import { int, num, pct } from "@/lib/format";
 import { Card, CardBody } from "../ui/card";
+import { ProvenanceChip } from "../layout/provenance";
+import type { Dataset } from "@/types";
 import { cn } from "../ui/cn";
 
 export const NOT_DEMONSTRATED = "Testing has not demonstrated a reliable predictive advantage.";
@@ -51,11 +53,13 @@ export function ModelPerformance({
   modelVersion,
   testWindowRuns,
   showLink = true,
+  dataset,
 }: {
   evaluation: BacktestEvaluation;
   modelVersion: string;
   testWindowRuns: number;
   showLink?: boolean;
+  dataset: Dataset;
 }) {
   const p = evaluation.perThreshold["2x"]!;
   const signal = SIGNAL_COPY[evaluation.signal];
@@ -75,8 +79,11 @@ export function ModelPerformance({
               Out-of-sample, walk-forward · target ≥2x · <span className="font-mono text-xs">{modelVersion}</span>
             </p>
           </div>
-          <div className={cn("rounded-full border px-4 py-1.5 text-xs font-bold tracking-[0.16em]", signal.tone)} role="status">
-            {signal.label}
+          <div className="flex flex-wrap items-center gap-2">
+            <ProvenanceChip dataset={dataset} />
+            <div className={cn("rounded-full border px-4 py-1.5 text-xs font-bold tracking-[0.16em]", signal.tone)} role="status">
+              {signal.label}
+            </div>
           </div>
         </div>
 
@@ -90,6 +97,11 @@ export function ModelPerformance({
           </div>
         )}
         {!notDemonstrated && <p className="text-sm leading-relaxed text-ink-2">{signal.body}</p>}
+        {dataset !== "real" && (
+          <p className="text-xs font-semibold text-warn">
+            These figures come from {dataset === "demo" ? "DEMO" : "TEST"} DATA (synthetic) and say nothing about real game observations.
+          </p>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Figure strong label="Test samples" value={int(p.n)} sub="unseen future rounds" />

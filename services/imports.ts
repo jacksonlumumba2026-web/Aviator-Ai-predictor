@@ -48,7 +48,9 @@ export async function importBatch(req: ImportRequest): Promise<{ batch: ImportBa
       throw new HttpError(422, `Refusing to import as REAL DATA: ${analysis.syntheticMarkers.join("; ")}.`, summarise(analysis));
   }
   if (!analysis.rows.length) throw new HttpError(422, "No valid rows to import.", summarise(analysis));
-  if (!analysis.clean && !req.acceptIssues) {
+  // Synthetic markers only matter for REAL data (handled above); row problems matter for every dataset.
+  const hasRowIssues = analysis.errors.length > 0 || analysis.conflicts.length > 0;
+  if (hasRowIssues && !req.acceptIssues) {
     throw new HttpError(
       422,
       `Import blocked: ${analysis.errors.length} rejected row(s), ${analysis.conflicts.length} conflicting duplicate(s). Fix the file, or explicitly accept importing only the ${analysis.rows.length} valid row(s).`,

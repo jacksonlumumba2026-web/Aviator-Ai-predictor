@@ -29,6 +29,21 @@ signal by construction), that is exactly what it reports.
 
 ---
 
+## Real-data validation (start here for real data)
+
+| Step | Where | Doc |
+|---|---|---|
+| Frozen audited version | tag `v0.2.0-audited` (`f137a15`) | `release/v0.2.0-audited/` |
+| Import attested real history (provenance, checksums, strict validation) | **Data** | [VALIDATION_PROTOCOL.md §1](docs/VALIDATION_PROTOCOL.md) |
+| Data quality + independence diagnostics (Holm-corrected) | **Data Quality** | §2 |
+| Frozen protocol: ≥45k rounds, untouched ≥6.5k final test, later ≥6.5k confirmation, Holm | **Validation** | §3–§7 |
+| Final scientific report | `docs/REAL_DATA_VALIDATION_REPORT.md` | §8 |
+
+Every page shows a provenance label (**REAL DATA**, **DEMO DATA** or **TEST DATA**), and the three
+datasets are never mixed. A full-scale protocol dry run on synthetic **TEST DATA** is in
+[`docs/examples/TEST_DATA_PROTOCOL_DRY_RUN.md`](docs/examples/TEST_DATA_PROTOCOL_DRY_RUN.md); it
+says nothing about real games.
+
 ## Architecture
 
 ```
@@ -59,7 +74,7 @@ Supabase Realtime with the anon key, and RLS allows only `SELECT`.
 
 ```
 app/
-  (lab)/dashboard  live  predictions  backtest  data  models  settings
+  (lab)/dashboard  live  predictions  backtest  data  quality  validation  models  settings
   api/             rounds, rounds/import, rounds/export, demo, models/train,
                    predictions/next, ingest, auth/*, settings/dataset, data-sources
 components/        ui/ (design system) · layout/ · charts/ · lab/
@@ -67,7 +82,7 @@ lib/               csv.ts · stats.ts · evaluation.ts · auth.ts · http.ts · 
 services/          repository/ (supabase + local) · ingestion · training · prediction · ml-client
 types/             shared TypeScript types
 supabase/          migrations/ (schema, indexes, RLS, realtime)
-ml/aviator_ml/     features/ · models/ · training/ · evaluation/ · api/
+ml/aviator_ml/     features/ · models/ · training/ · evaluation/ · protocol/ (frozen validation) · api/
 data/demo/         DEMO_DATA_NOT_REAL_rounds.csv (synthetic)
 scripts/           generate-demo-data.ts
 ```

@@ -57,7 +57,7 @@ export default async function BacktestPage({ searchParams }: { searchParams: Pro
       />
 
       <Section>
-        <ModelPerformance evaluation={evaluation} modelVersion={run.model_version} testWindowRuns={testWindowRuns} showLink={false} />
+        <ModelPerformance evaluation={evaluation} modelVersion={run.model_version} testWindowRuns={testWindowRuns} showLink={false} dataset={dataset} />
       </Section>
 
       <RevealGroup className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">

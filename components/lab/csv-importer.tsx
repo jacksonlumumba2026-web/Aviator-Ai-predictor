@@ -74,7 +74,8 @@ export function CsvImporter({ disabled }: { disabled?: boolean }) {
   const a = useMemo(() => (file ? analyseStrict(file.text, { fileName: file.name }) : null), [file]);
   const realBlocked = dataset === "real" && (!!a?.syntheticMarkers.length || method === "synthetic");
   const formOk = source.trim().length > 0 && notes.trim().length >= 10 && (dataset !== "real" || attested);
-  const canImport = !!a?.rows.length && formOk && !realBlocked && (a.clean || acceptIssues) && !disabled;
+  const rowIssues = !!a && (a.errors.length > 0 || a.conflicts.length > 0);
+  const canImport = !!a?.rows.length && formOk && !realBlocked && (!rowIssues || acceptIssues) && !disabled;
 
   async function load(f: File | undefined) {
     setResult(null);
@@ -202,7 +203,9 @@ export function CsvImporter({ disabled }: { disabled?: boolean }) {
           {a.syntheticMarkers.length > 0 && (
             <p className="flex items-start gap-2 rounded-xl border border-warn/40 bg-warn/[0.07] p-3 text-xs text-warn">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-              This file looks synthetic ({a.syntheticMarkers.join("; ")}). It can only be imported as TEST DATA.
+              {dataset === "real"
+                ? `This file looks synthetic (${a.syntheticMarkers.join("; ")}). It can only be imported as TEST DATA.`
+                : `Synthetic markers found (${a.syntheticMarkers.join("; ")}) — fine for TEST DATA.`}
             </p>
           )}
           {a.warnings.map((w) => (
@@ -263,7 +266,7 @@ export function CsvImporter({ disabled }: { disabled?: boolean }) {
         </label>
       )}
 
-      {a && !a.clean && !a.syntheticMarkers.length && a.rows.length > 0 && (
+      {a && rowIssues && a.rows.length > 0 && (
         <label className="flex items-start gap-3 text-xs text-ink-2">
           <input type="checkbox" checked={acceptIssues} onChange={(e) => setAcceptIssues(e.target.checked)} className="mt-0.5 accent-[#7b8cff]" />
           Import only the {a.rows.length.toLocaleString("en-US")} valid row(s). Rejected and conflicting rows are recorded in the batch report.

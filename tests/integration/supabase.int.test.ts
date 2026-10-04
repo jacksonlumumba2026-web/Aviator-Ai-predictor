@@ -281,11 +281,18 @@ describe("provenance-safe import (import batches)", () => {
     expect(ok.analysis.errors).toHaveLength(1);
   });
 
+  it("accepts a TEST DATA banner for the test dataset (regression)", async () => {
+    const { importBatch } = await import("@/services/imports");
+    const banner = "# TEST DATA — synthetic\nmultiplier,round_time\n1.50,2026-10-04T11:00:00Z\n";
+    const out = await importBatch({ ...base, csv: banner, dataset: "test", attested: false, collectionMethod: "synthetic" });
+    expect(out.ingest.inserted).toBe(1);
+  });
+
   it("imports synthetic data only as TEST DATA, kept separate", async () => {
     const { importBatch } = await import("@/services/imports");
     const out = await importBatch({ ...base, csv: good, dataset: "test", attested: false, collectionMethod: "synthetic" });
     expect(out.ingest.inserted).toBe(3);
-    expect(await m.repo.countRounds("test")).toBe(3);
+    expect(await m.repo.countRounds("test")).toBe(4);
     expect((await m.repo.allRounds({ dataset: "test" }))[0].dataset).toBe("test");
   });
 });
