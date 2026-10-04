@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg: #06070a;
+  --color-surface: #0c0e13;
+  --color-surface-2: #11141b;
+  --color-surface-3: #171b24;
+  --color-line: rgb(255 255 255 / 0.07);
+  --color-line-strong: rgb(255 255 255 / 0.12);
+  --color-ink: #eceef3;
+  --color-ink-2: #a9aebb;
+  --color-ink-3: #6f7584;
+
+  --color-brand: #7b8cff;
+  --color-brand-2: #4fd1c5;
+
+  /* Chart slots (validated dark-mode categorical steps) */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+
+  /* Status — always paired with an icon + label */
+  --color-good: #0ca30c;
+  --color-good-ink: #4ade80;
+  --color-warn: #fab219;
+  --color-bad: #d03b3b;
+  --color-bad-ink: #f87171;
+
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+body {
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Ambient backdrop: two very soft light pools + a fine grid. */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 520px at 85% -10%, rgb(123 140 255 / 0.10), transparent 60%),
+    radial-gradient(700px 480px at -10% 30%, rgb(79 209 197 / 0.05), transparent 60%),
+    var(--color-bg);
+}
+.app-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.025) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at 50% 0%, black 20%, transparent 75%);
+}
+
+/* Premium card: hairline gradient border + glass surface. */
+.card {
+  position: relative;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.035), rgb(255 255 255 / 0.012));
+  border: 1px solid var(--color-line);
+  box-shadow:
+    0 1px 0 0 rgb(255 255 255 / 0.04) inset,
+    0 20px 40px -24px rgb(0 0 0 / 0.6);
+  backdrop-filter: blur(12px);
+}
+.card-hover {
+  transition: border-color 0.25s ease, transform 0.25s ease, background 0.25s ease;
+}
+.card-hover:hover {
+  border-color: var(--color-line-strong);
+  transform: translateY(-2px);
+}
+
+.demo-stripes {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(250 178 25 / 0.14) 0 10px,
+    rgb(250 178 25 / 0.06) 10px 20px
+  );
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.12) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

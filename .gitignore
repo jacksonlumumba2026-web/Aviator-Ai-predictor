@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+.env
+.env.local
+.env.*.local
+.data/
+.vercel/
+coverage/
+# ML service
+ml/artifacts/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
