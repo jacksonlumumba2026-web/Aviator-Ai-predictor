@@ -1,0 +1,135 @@
+{
+  "tag": "v0.2.0-audited",
+  "commit": "f137a1503bd92c53240c222cd4dfbd97158fa56c",
+  "commit_date": "2026-10-04T10:28:38+00:00",
+  "created_at": "2026-10-04T10:34:51.020331+00:00",
+  "model_versions": {
+    "audit_run": "v20261004102644-58a656",
+    "note": "Model artifacts are not committed. Training is deterministic (random_state=42); retraining this tag on the same rounds reproduces the audit predictions bit-for-bit (verified in the audit).",
+    "candidates": [
+      "logistic_regression",
+      "random_forest",
+      "gradient_boosting"
+    ]
+  },
+  "targets": [
+    ">=1.5x",
+    ">=2x",
+    ">=3x",
+    ">=5x",
+    ">=10x"
+  ],
+  "split": {
+    "history_rows": 20,
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15,
+    "order": "chronological, never shuffled"
+  },
+  "baseline": "training-window base rate (same information set as the model)",
+  "significance": "Brier paired z-test, Bonferroni alpha=0.05/5, plus Hanley-McNeil ROC-AUC CI lower bound > 0.5",
+  "features": {
+    "count": 31,
+    "names": [
+      "lag_log_1",
+      "lag_log_2",
+      "lag_log_3",
+      "lag_log_4",
+      "lag_log_5",
+      "lag_log_6",
+      "lag_log_7",
+      "lag_log_8",
+      "lag_log_9",
+      "lag_log_10",
+      "mean_log_3",
+      "median_log_3",
+      "std_log_3",
+      "mean_log_5",
+      "median_log_5",
+      "std_log_5",
+      "mean_log_10",
+      "median_log_10",
+      "std_log_10",
+      "mean_log_20",
+      "median_log_20",
+      "std_log_20",
+      "n_below_1_2_10",
+      "n_at_least_2_10",
+      "n_at_least_5_10",
+      "n_below_1_2_20",
+      "n_at_least_2_20",
+      "n_at_least_5_20",
+      "volatility_ratio_5_20",
+      "max_log_20",
+      "streak_2x"
+    ],
+    "definitions": {
+      "lag_log_k (k=1..10)": "ln(multiplier) of the round k positions before the target round",
+      "mean_log_w / median_log_w / std_log_w (w=3,5,10,20)": "rolling mean / median / population std of ln(multiplier) over the previous w rounds",
+      "n_below_1_2_w (w=10,20)": "count of previous w rounds with multiplier < 1.2",
+      "n_at_least_2_w (w=10,20)": "count of previous w rounds with multiplier >= 2",
+      "n_at_least_5_w (w=10,20)": "count of previous w rounds with multiplier >= 5",
+      "volatility_ratio_5_20": "std_log_5 / (std_log_20 + 1e-9)",
+      "max_log_20": "max ln(multiplier) over the previous 20 rounds",
+      "streak_2x": "signed run length of the previous rounds relative to 2x (+k: k rounds >= 2x, -k: k rounds < 2x), clipped to +/-50"
+    }
+  },
+  "database_schema": {
+    "version": "20261004100000",
+    "migrations": {
+      "20261004000000_init.sql": "f34e552767857a9ab01b2d60b17e32cc7e695c2c9c85c1cbdbaf9876c95fa5da",
+      "20261004100000_prediction_audit.sql": "0a8abe5daad39a6a0337ad0f5813c2c464a2defb36223acc8f8f5272c411e589"
+    }
+  },
+  "components": {
+    "feature_engineering": {
+      "sha256": "4256f878700847f0b9325c77dce61c439b148e8ffc8dc804adcb64e09e6bccfc",
+      "files": {
+        "ml/aviator_ml/features/engineering.py": "3e233d4daef672e71e0fa3028f192c5adc128e6f8dac3e2deb25db994f404f20",
+        "ml/aviator_ml/config.py": "e263946d3c112c6af7353d39286ef683a112009ebb1f2eb69708ed766c1b26cc"
+      }
+    },
+    "model_architecture": {
+      "sha256": "f47f0e73f5f1ab812daffbf5066113510dcfa1c67527a41c1e2770220627a178",
+      "files": {
+        "ml/aviator_ml/models/registry.py": "b65da769a735333618ea804ead0b446183c21526b470d2165e200e574986bd43"
+      }
+    },
+    "training_protocol": {
+      "sha256": "b34ee3dd1ff179f09f379b3b760f0b72568af79de55148146ac2ae79d65c4aa8",
+      "files": {
+        "ml/aviator_ml/training/experiment.py": "00b243820bbf8839c9b61b69d7dda3f12a0e696aebac4a00a55125d400526a52"
+      }
+    },
+    "evaluation_python": {
+      "sha256": "230d91296baacdbb4de22a8be5e0aa489df9dad1800141d3f962948dc8bf79e5",
+      "files": {
+        "ml/aviator_ml/evaluation/metrics.py": "439d0d7bafb306aa65140ddfbf48013221fa97d3f94dd52b8e6c219c08c7526b",
+        "ml/aviator_ml/evaluation/backtest.py": "a8c95d0397918ebcf8c9fdf24ff19d59117859183594ea7f689b34364ae2d6cb"
+      }
+    },
+    "evaluation_typescript": {
+      "sha256": "9ff5be34b71781025b2566009d8cc7270aaa822c48ae142e62860405442c9034",
+      "files": {
+        "lib/evaluation.ts": "4c6efba31de8132a751b94b8c26a630ab56d2012e886fc13f79942c8abc67b92",
+        "lib/stats.ts": "5d104e2f57c43d224f5120abc697d536af63e4abccc2bb976294cb79cf2be874",
+        "lib/constants.ts": "267a132fa0fbad4a5f8e27a3e0d1246c8414d7c9aee5c460acb19b3336c1c3b6"
+      }
+    },
+    "ingestion_validation": {
+      "sha256": "47d90f968d06434986954815cb0b277c3a7f99eac90d60bdd129dfb39b25b4b4",
+      "files": {
+        "lib/csv.ts": "70bf3fce2db1b4c022f4aaa417090a747cbf342e085d3c8639c1401121dcbe38",
+        "lib/schemas.ts": "50cf3058a5d8b08fe18ffae615813ce39e25f7606ce0d8898e774b0ae3236412"
+      }
+    }
+  },
+  "methodology_components": [
+    "evaluation_python",
+    "evaluation_typescript",
+    "feature_engineering",
+    "model_architecture",
+    "training_protocol"
+  ],
+  "python_lock": "ml/requirements.lock.txt"
+}

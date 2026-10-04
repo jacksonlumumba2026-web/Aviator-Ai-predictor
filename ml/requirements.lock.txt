@@ -1,0 +1,10 @@
+# Exact versions used for the v0.2.0-audited evaluation (Python 3.11.15).
+# Install with: pip install -r ml/requirements.lock.txt
+fastapi==0.142.2
+uvicorn[standard]==0.50.2
+pydantic==2.13.4
+numpy==2.4.6
+pandas==3.0.6
+scikit-learn==1.9.1
+scipy==1.17.1
+joblib==1.6.0
