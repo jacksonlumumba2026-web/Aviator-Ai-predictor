@@ -58,6 +58,11 @@ const HAS_TZ = /(Z|[+-]\d{2}:?\d{2})$/i;
 export function normaliseTime(value: string): { iso: string; assumedUtc: boolean } | null {
   const v = value.trim();
   if (!v || !/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?)?(Z|[+-]\d{2}:?\d{2})?$/i.test(v)) return null;
+  // Reject impossible calendar dates: Date.parse silently rolls 2026-02-30 over to March 2.
+  const [y, mo, d] = v.slice(0, 10).split("-").map(Number);
+  if (mo < 1 || mo > 12 || d < 1 || d > new Date(Date.UTC(y, mo, 0)).getUTCDate()) return null;
+  const hms = v.slice(11).match(/^(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (hms && (Number(hms[1]) > 23 || Number(hms[2]) > 59 || Number(hms[3] ?? 0) > 59)) return null;
   const assumedUtc = !HAS_TZ.test(v);
   const candidate = (assumedUtc ? v + (v.length === 10 ? "T00:00:00Z" : "Z") : v).replace(" ", "T");
   const ms = Date.parse(candidate);
@@ -147,8 +152,8 @@ export function parseRoundsCsv(text: string): ParsedRounds {
 }
 
 /** Serialise rounds to CSV for export. */
-export function roundsToCsv(rows: { multiplier: number; round_time: string; source: string; is_demo: boolean }[]): string {
+export function roundsToCsv(rows: { multiplier: number; round_time: string; source: string; dataset: string }[]): string {
   const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const body = rows.map((r) => [r.multiplier.toFixed(2), r.round_time, esc(r.source), r.is_demo ? "true" : "false"].join(","));
-  return ["multiplier,round_time,source,is_demo", ...body].join("\n") + "\n";
+  const body = rows.map((r) => [r.multiplier.toFixed(2), r.round_time, esc(r.source), r.dataset].join(","));
+  return ["multiplier,round_time,source,dataset", ...body].join("\n") + "\n";
 }

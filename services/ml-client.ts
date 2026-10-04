@@ -93,6 +93,59 @@ export const mlReplay = (modelVersion: string, features: Record<string, number>)
 export const mlFeatures = (multipliers: number[]) =>
   call<{ features: Record<string, number> }>("/audit/features", { method: "POST", body: JSON.stringify({ multipliers }) });
 
+export interface ProtocolInfo {
+  protocol_version: string;
+  protocol_sha256: string;
+  frozen: { protocol_sha256?: string; frozen_at?: string; files?: Record<string, string> };
+  frozen_and_unchanged: boolean;
+  requirements: Record<string, number>;
+  criteria: Record<string, string>;
+}
+
+export interface ProtocolDescription {
+  protocol_version: string;
+  protocol_sha256: string;
+  data_sha256: string;
+  window_fingerprint: string;
+  window_start: string;
+  window_end: string;
+  window_rounds: number;
+  development_rounds: number;
+}
+
+export interface ProtocolJob {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  error?: string;
+  result?: Record<string, unknown> & {
+    classification: string;
+    predictions: {
+      round_time: string;
+      based_on_round_time: string;
+      train_end_round_time: string;
+      probabilities: Record<ThresholdKey, number>;
+      baseline_probabilities: Record<ThresholdKey, number>;
+      features: Record<string, number>;
+      actual_multiplier: number;
+    }[];
+  };
+}
+
+type ProtocolBody = {
+  rounds: { multiplier: number; round_time: string }[];
+  dataset: Dataset;
+  stage: "final_test" | "confirmation";
+  stage1?: Record<string, unknown> | null;
+  overrides?: Record<string, number>;
+};
+
+export const mlProtocolInfo = () => call<ProtocolInfo>("/protocol/info", { method: "GET", timeoutMs: 5_000 });
+export const mlProtocolDescribe = (b: ProtocolBody) =>
+  call<ProtocolDescription>("/protocol/describe", { method: "POST", body: JSON.stringify(b), timeoutMs: 120_000 });
+export const mlProtocolStart = (b: ProtocolBody) =>
+  call<ProtocolJob>("/protocol/jobs", { method: "POST", body: JSON.stringify(b), timeoutMs: 120_000 });
+export const mlProtocolJob = (id: string) => call<ProtocolJob>(`/protocol/jobs/${encodeURIComponent(id)}`, { method: "GET", timeoutMs: 60_000 });
+
 export const mlPredict = (modelVersion: string, multipliers: number[]) =>
   call<MlPredictResponse>("/predict", {
     method: "POST",

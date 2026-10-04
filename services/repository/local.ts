@@ -2,7 +2,7 @@ import "server-only";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { DataSource, Dataset, ModelRun, Prediction, Round } from "@/types";
+import type { DataSource, Dataset, ImportBatch, ModelRun, Prediction, Round, ValidationRun } from "@/types";
 import type { PredictionFilter, Repository, RoundFilter } from "./types";
 
 /**
@@ -16,16 +16,18 @@ interface StoreData {
   predictions: Prediction[];
   model_runs: ModelRun[];
   data_sources: DataSource[];
+  import_batches?: ImportBatch[];
+  validation_runs?: ValidationRun[];
 }
 
 const DEFAULT_SOURCES: Omit<DataSource, "id" | "created_at">[] = [
   { source_name: "manual", source_type: "manual", enabled: true, last_update: null, notes: "Rounds entered by hand in the Data page." },
   { source_name: "csv_import", source_type: "csv", enabled: true, last_update: null, notes: "Historical rounds imported from CSV files." },
+  { source_name: "test", source_type: "test", enabled: true, last_update: null, notes: "TEST DATA — synthetic or fixture data used to test the pipeline. Never real observations." },
   { source_name: "demo", source_type: "demo", enabled: true, last_update: null, notes: "DEMO DATA — NOT REAL GAME RESULTS. Synthetic i.i.d. rounds for development and testing." },
 ];
 
 const now = () => new Date().toISOString();
-const isDemo = (d: Dataset) => d === "demo";
 const byTime = (a: Round, b: Round) => (a.round_time < b.round_time ? -1 : a.round_time > b.round_time ? 1 : 0);
 
 export class LocalRepository implements Repository {
@@ -68,7 +70,7 @@ export class LocalRepository implements Repository {
   private filterRounds(d: StoreData, f: RoundFilter) {
     return d.rounds.filter(
       (r) =>
-        r.is_demo === isDemo(f.dataset) &&
+        r.dataset === f.dataset &&
         (!f.from || r.round_time >= f.from) &&
         (!f.to || r.round_time <= f.to) &&
         (f.minMultiplier === undefined || r.multiplier >= f.minMultiplier) &&
@@ -93,22 +95,22 @@ export class LocalRepository implements Repository {
   }
 
   async countRounds(dataset: Dataset) {
-    return (await this.load()).rounds.filter((r) => r.is_demo === isDemo(dataset)).length;
+    return (await this.load()).rounds.filter((r) => r.dataset === dataset).length;
   }
 
   async existingRoundTimes(dataset: Dataset, times: string[]) {
     const want = new Set(times);
     const found = new Set<string>();
-    for (const r of (await this.load()).rounds) if (r.is_demo === isDemo(dataset) && want.has(r.round_time)) found.add(r.round_time);
+    for (const r of (await this.load()).rounds) if (r.dataset === dataset && want.has(r.round_time)) found.add(r.round_time);
     return found;
   }
 
   async insertRounds(rows: Parameters<Repository["insertRounds"]>[0]) {
     return this.mutate((d) => {
-      const keys = new Set(d.rounds.map((r) => `${r.is_demo}|${r.round_time}`));
+      const keys = new Set(d.rounds.map((r) => `${r.dataset}|${r.round_time}`));
       let inserted = 0;
       for (const r of rows) {
-        const k = `${r.is_demo}|${r.round_time}`;
+        const k = `${r.dataset}|${r.round_time}`;
         if (keys.has(k)) continue;
         keys.add(k);
         d.rounds.push({ ...r, id: String(++d.seq), created_at: now() });
@@ -122,7 +124,7 @@ export class LocalRepository implements Repository {
     const del = new Set(ids);
     return this.mutate((d) => {
       const before = d.rounds.length;
-      d.rounds = d.rounds.filter((r) => !(r.is_demo === isDemo(dataset) && del.has(r.id)));
+      d.rounds = d.rounds.filter((r) => !(r.dataset === dataset && del.has(r.id)));
       return before - d.rounds.length;
     });
   }
@@ -130,7 +132,7 @@ export class LocalRepository implements Repository {
   async deleteAllRounds(dataset: Dataset) {
     return this.mutate((d) => {
       const before = d.rounds.length;
-      d.rounds = d.rounds.filter((r) => r.is_demo !== isDemo(dataset));
+      d.rounds = d.rounds.filter((r) => r.dataset !== dataset);
       return before - d.rounds.length;
     });
   }
@@ -144,7 +146,11 @@ export class LocalRepository implements Repository {
 
   private filterPredictions(d: StoreData, f: PredictionFilter) {
     return d.predictions.filter(
-      (p) => p.is_demo === isDemo(f.dataset) && (!f.kind || p.kind === f.kind) && (!f.modelRunId || p.model_run_id === f.modelRunId),
+      (p) =>
+        p.dataset === f.dataset &&
+        (!f.kind || p.kind === f.kind) &&
+        (!f.modelRunId || p.model_run_id === f.modelRunId) &&
+        (!f.validationRunId || p.validation_run_id === f.validationRunId),
     );
   }
 
@@ -174,7 +180,7 @@ export class LocalRepository implements Repository {
 
   async deletePredictions(dataset: Dataset) {
     await this.mutate((d) => {
-      d.predictions = d.predictions.filter((p) => p.is_demo !== isDemo(dataset));
+      d.predictions = d.predictions.filter((p) => p.dataset !== dataset);
     });
   }
 
@@ -188,7 +194,7 @@ export class LocalRepository implements Repository {
 
   async listModelRuns(dataset: Dataset, limit: number) {
     return (await this.load()).model_runs
-      .filter((r) => r.is_demo === isDemo(dataset))
+      .filter((r) => r.dataset === dataset)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
       .slice(0, limit);
   }
@@ -199,7 +205,7 @@ export class LocalRepository implements Repository {
 
   async deleteModelRuns(dataset: Dataset) {
     await this.mutate((d) => {
-      const gone = new Set(d.model_runs.filter((r) => r.is_demo === isDemo(dataset)).map((r) => r.id));
+      const gone = new Set(d.model_runs.filter((r) => r.dataset === dataset).map((r) => r.id));
       d.model_runs = d.model_runs.filter((r) => !gone.has(r.id));
       d.predictions = d.predictions.filter((p) => !p.model_run_id || !gone.has(p.model_run_id));
     });
@@ -230,5 +236,57 @@ export class LocalRepository implements Repository {
       const s = d.data_sources.find((x) => x.id === id);
       if (s) Object.assign(s, patch);
     });
+  }
+
+  async insertImportBatch(b: Parameters<Repository["insertImportBatch"]>[0]) {
+    if (b.dataset === "real" && (!b.attested || b.collection_method === "synthetic")) throw new Error("real data must be attested and non-synthetic");
+    return this.mutate((d) => {
+      const row: ImportBatch = { ...b, id: randomUUID(), imported_at: now() };
+      (d.import_batches ??= []).push(row);
+      return row;
+    });
+  }
+
+  async updateImportBatch(id: string, patch: Parameters<Repository["updateImportBatch"]>[1]) {
+    await this.mutate((d) => {
+      const b = d.import_batches?.find((x) => x.id === id);
+      if (b) Object.assign(b, patch);
+    });
+  }
+
+  async listImportBatches(dataset: Dataset) {
+    return ((await this.load()).import_batches ?? []).filter((b) => b.dataset === dataset).sort((a, b) => (a.imported_at < b.imported_at ? 1 : -1));
+  }
+
+  async deleteImportBatches(dataset: Dataset) {
+    await this.mutate((d) => {
+      d.import_batches = (d.import_batches ?? []).filter((b) => b.dataset !== dataset);
+    });
+  }
+
+  async insertValidationRun(r: Parameters<Repository["insertValidationRun"]>[0]) {
+    return this.mutate((d) => {
+      const list = (d.validation_runs ??= []);
+      if (list.some((x) => x.dataset === r.dataset && x.protocol_sha256 === r.protocol_sha256 && x.stage === r.stage && x.window_fingerprint === r.window_fingerprint))
+        throw new Error("ALREADY_EVALUATED");
+      const row: ValidationRun = { job_id: null, ...r, id: randomUUID(), registered_at: now(), completed_at: null, result: null, classification: null, error: null };
+      list.push(row);
+      return row;
+    });
+  }
+
+  async updateValidationRun(id: string, patch: Parameters<Repository["updateValidationRun"]>[1]) {
+    await this.mutate((d) => {
+      const r = d.validation_runs?.find((x) => x.id === id);
+      if (r) Object.assign(r, patch);
+    });
+  }
+
+  async listValidationRuns(dataset: Dataset) {
+    return ((await this.load()).validation_runs ?? []).filter((r) => r.dataset === dataset).sort((a, b) => (a.registered_at < b.registered_at ? 1 : -1));
+  }
+
+  async getValidationRun(id: string) {
+    return (await this.load()).validation_runs?.find((r) => r.id === id) ?? null;
   }
 }

@@ -5,8 +5,8 @@ import path from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "."),
-      "server-only": path.resolve(__dirname, "tests/stubs/server-only.ts"),
+      "@": path.resolve(import.meta.dirname, "."),
+      "server-only": path.resolve(import.meta.dirname, "tests/stubs/server-only.ts"),
     },
   },
   test: { include: ["tests/integration/**/*.int.test.ts"], testTimeout: 120_000, fileParallelism: false },

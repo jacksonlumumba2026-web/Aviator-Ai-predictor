@@ -1,0 +1,23 @@
+{
+  "protocol_version": "real-data-v1",
+  "protocol_sha256": "8be1f69c1b346fd211089e97b5493aae02cc7fc73be5db5bd6059a7c7caa6ece",
+  "frozen_at": "2026-10-04T10:48:56.872541+00:00",
+  "requirements": {
+    "min_total_rounds": 45000,
+    "min_final_test_rounds": 6500,
+    "min_confirmation_rounds": 6500,
+    "min_training_rounds": 20000,
+    "alpha": 0.05
+  },
+  "files": {
+    "config.py": "e263946d3c112c6af7353d39286ef683a112009ebb1f2eb69708ed766c1b26cc",
+    "features/engineering.py": "3e233d4daef672e71e0fa3028f192c5adc128e6f8dac3e2deb25db994f404f20",
+    "models/registry.py": "b65da769a735333618ea804ead0b446183c21526b470d2165e200e574986bd43",
+    "training/experiment.py": "00b243820bbf8839c9b61b69d7dda3f12a0e696aebac4a00a55125d400526a52",
+    "evaluation/metrics.py": "439d0d7bafb306aa65140ddfbf48013221fa97d3f94dd52b8e6c219c08c7526b",
+    "evaluation/backtest.py": "a8c95d0397918ebcf8c9fdf24ff19d59117859183594ea7f689b34364ae2d6cb",
+    "protocol/multiple_testing.py": "f5f71d49c7ef37ccd4ce3fb6b9ae2af9caa5774768e878f7523a80c214f707cd",
+    "protocol/protocol.py": "b526420b57e6a85ee743d6ed39626cc95f47896d75c14e410dc6e781810fcd1a"
+  },
+  "based_on": "v0.2.0-audited (features, models, hyperparameters, targets, baseline and metrics unchanged)"
+}

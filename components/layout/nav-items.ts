@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Boxes, Database, FlaskConical, LayoutDashboard, ListOrdered, Settings } from "lucide-react";
+import { Activity, BarChart3, Boxes, ClipboardCheck, Database, FlaskConical, LayoutDashboard, ListOrdered, Microscope, Settings } from "lucide-react";
 
 export const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -6,6 +6,8 @@ export const NAV = [
   { href: "/predictions", label: "Predictions", icon: ListOrdered },
   { href: "/backtest", label: "Backtest", icon: FlaskConical },
   { href: "/data", label: "Data", icon: Database },
+  { href: "/quality", label: "Data Quality", icon: Microscope },
+  { href: "/validation", label: "Validation", icon: ClipboardCheck },
   { href: "/models", label: "Models", icon: Boxes },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;

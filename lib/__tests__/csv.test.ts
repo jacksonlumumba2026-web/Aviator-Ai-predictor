@@ -40,7 +40,7 @@ describe("parseRoundsCsv", () => {
   });
 
   it("round-trips through export", () => {
-    const csv = roundsToCsv([{ multiplier: 1.5, round_time: "2026-10-04T10:00:00.000Z", source: "a,b", is_demo: false }]);
+    const csv = roundsToCsv([{ multiplier: 1.5, round_time: "2026-10-04T10:00:00.000Z", source: "a,b", dataset: "real" }]);
     const r = parseRoundsCsv(csv);
     expect(r.rows[0].multiplier).toBe(1.5);
   });
@@ -53,6 +53,9 @@ describe("helpers", () => {
   it("rejects nonsense timestamps", () => {
     expect(normaliseTime("2026-13-45T99:00:00Z")).toBeNull();
     expect(normaliseTime("yesterday")).toBeNull();
+    expect(normaliseTime("2026-02-30T10:00:00Z")).toBeNull(); // would roll over to March 2
+    expect(normaliseTime("2024-02-29T10:00:00Z")).not.toBeNull(); // leap day is real
+    expect(normaliseTime("2026-10-04T24:00:00Z")).toBeNull();
   });
 });
 

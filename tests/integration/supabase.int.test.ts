@@ -28,8 +28,9 @@ type Mods = {
 let m: Mods;
 
 async function reset() {
-  for (const t of ["predictions", "model_runs", "aviator_rounds"]) {
-    const { error } = await m.db.from(t).delete().not("created_at", "is", null);
+  for (const t of ["predictions", "model_runs", "aviator_rounds", "validation_runs", "import_batches"]) {
+    const col = t === "import_batches" ? "imported_at" : t === "validation_runs" ? "registered_at" : "created_at";
+    const { error } = await m.db.from(t).delete().not(col, "is", null);
     if (error) throw new Error(error.message);
   }
 }
@@ -78,7 +79,7 @@ describe("CSV import → Supabase", () => {
       [1.05, "2026-10-04T10:00:36.000Z"],
       [7.78, "2026-10-04T10:00:50.000Z"],
     ]);
-    expect(stored.every((r) => r.source === "csv_import" && r.is_demo === false)).toBe(true);
+    expect(stored.every((r) => r.source === "csv_import" && r.dataset === "real")).toBe(true);
     expect(typeof stored[0].multiplier).toBe("number");
   });
 
@@ -93,7 +94,7 @@ describe("CSV import → Supabase", () => {
   it("enforces the database constraints even if app validation were bypassed", async () => {
     const { error } = await m.db.from("aviator_rounds").insert({ multiplier: 0.5, round_time: "2026-01-01T00:00:00Z" });
     expect(error?.code).toBe("23514");
-    const dup = await m.db.from("aviator_rounds").insert({ multiplier: 2, round_time: "2026-10-04T10:00:01Z", is_demo: false });
+    const dup = await m.db.from("aviator_rounds").insert({ multiplier: 2, round_time: "2026-10-04T10:00:01Z", dataset: "real" });
     expect(dup.error?.code).toBe("23505");
   });
 
@@ -102,7 +103,7 @@ describe("CSV import → Supabase", () => {
     const demo = await m.repo.allRounds({ dataset: "demo" });
     const real = await m.repo.allRounds({ dataset: "real" });
     expect(demo).toHaveLength(1);
-    expect(demo[0].is_demo).toBe(true);
+    expect(demo[0].dataset).toBe("demo");
     expect(real.find((r) => r.round_time === "2026-10-04T10:00:01.000Z")!.multiplier).toBe(1.24);
   });
 });
@@ -144,7 +145,7 @@ describe("predictions and model runs", () => {
   it("round-trips a model run report and prediction rows", async () => {
     const run = await m.repo.insertModelRun({
       model_version: "v20261004000000-abcdef",
-      is_demo: false,
+      dataset: "real",
       training_samples: 10,
       validation_samples: 2,
       test_samples: 3,
@@ -166,7 +167,7 @@ describe("predictions and model runs", () => {
         model_version: run.model_version,
         model_run_id: run.id,
         kind: "live",
-        is_demo: false,
+        dataset: "real",
         based_on_round_time: "2026-10-04T11:59:45.000Z",
         probability_1_5x: 0.6,
         probability_2x: 0.45,
@@ -206,7 +207,7 @@ describe("live estimate resolution on Supabase (timestamp format regression)", (
         model_version: "v20261004000000-abcdef",
         model_run_id: null,
         kind: "live",
-        is_demo: false,
+        dataset: "real",
         based_on_round_time: "2026-10-04T10:00:16.000Z",
         probability_1_5x: 0.6, probability_2x: 0.6, probability_3x: 0.3, probability_5x: 0.2, probability_10x: 0.1,
         baseline: { "2x": 0.48 }, features: { lag_log_1: 0.18 }, train_end_round_time: "2026-10-04T10:00:16.000Z", target_round_time: null,
@@ -224,11 +225,67 @@ describe("live estimate resolution on Supabase (timestamp format regression)", (
 
   it("rejects a prediction whose model was trained on its own target (DB constraint)", async () => {
     const { error } = await m.db.from("predictions").insert({
-      prediction_time: "2026-10-04T10:00:31Z", model_version: "x", kind: "backtest",
+      prediction_time: "2026-10-04T10:00:31Z", model_version: "x", kind: "backtest", dataset: "real",
       probability_1_5x: 0.5, probability_2x: 0.5, probability_3x: 0.3, probability_5x: 0.2, probability_10x: 0.1,
       confidence: "LOW", predicted_class: "<1.5x",
       target_round_time: "2026-10-04T10:00:31Z", train_end_round_time: "2026-10-04T10:00:31Z",
     });
     expect(error?.code).toBe("23514");
+  });
+});
+
+
+describe("provenance-safe import (import batches)", () => {
+  const good = "multiplier,round_time\n1.24,2026-10-04T13:00:01+03:00\n2.31,2026-10-04T10:00:18Z\n1.05,2026-10-04T10:00:36Z\n";
+  const base = {
+    sourceName: "my_exported_history",
+    collectionMethod: "official_export" as const,
+    provenanceNotes: "Exported from my own account history page on 2026-10-04.",
+    acceptIssues: false,
+  };
+
+  it("records a batch with provenance, checksums and a quality report", async () => {
+    await reset();
+    const { importBatch } = await import("@/services/imports");
+    const out = await importBatch({ ...base, csv: good, fileName: "history.csv", dataset: "real", attested: true });
+    expect(out.ingest.inserted).toBe(3);
+    const [b] = await m.repo.listImportBatches("real");
+    expect(b).toMatchObject({
+      dataset: "real", source_name: "my_exported_history", collection_method: "official_export", attested: true,
+      total_rows: 3, valid_rows: 3, inserted_rows: 3, file_name: "history.csv",
+      first_round_time: "2026-10-04T10:00:01.000Z", last_round_time: "2026-10-04T10:00:36.000Z",
+    });
+    expect(b.file_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(b.rows_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect((b.quality_report as { uniqueRounds: number }).uniqueRounds).toBe(3);
+    const rounds = await m.repo.allRounds({ dataset: "real" });
+    expect(rounds.every((r) => r.import_batch_id === b.id)).toBe(true);
+  });
+
+  it("refuses unattested, synthetic, or synthetic-marked files as REAL DATA", async () => {
+    const { importBatch } = await import("@/services/imports");
+    await expect(importBatch({ ...base, csv: good, dataset: "real", attested: false })).rejects.toThrow(/attested/);
+    await expect(importBatch({ ...base, csv: good, dataset: "real", attested: true, collectionMethod: "synthetic" })).rejects.toThrow(/Synthetic/);
+    await expect(importBatch({ ...base, csv: "# DEMO DATA — NOT REAL GAME RESULTS\n" + good, dataset: "real", attested: true })).rejects.toThrow(/Refusing/);
+    // ...and the database itself refuses an unattested real batch.
+    const { error } = await m.db.from("import_batches").insert({ dataset: "real", source_name: "x", collection_method: "synthetic", provenance_notes: "0123456789", attested: true });
+    expect(error?.code).toBe("23514");
+  });
+
+  it("blocks dirty files unless issues are explicitly accepted", async () => {
+    const { importBatch } = await import("@/services/imports");
+    const dirty = good + "0.5,2026-10-04T10:01:00Z\n";
+    await expect(importBatch({ ...base, csv: dirty, dataset: "real", attested: true })).rejects.toThrow(/Import blocked/);
+    const ok = await importBatch({ ...base, csv: dirty, dataset: "real", attested: true, acceptIssues: true });
+    expect(ok.ingest).toMatchObject({ inserted: 0, alreadyStored: 3 });
+    expect(ok.analysis.errors).toHaveLength(1);
+  });
+
+  it("imports synthetic data only as TEST DATA, kept separate", async () => {
+    const { importBatch } = await import("@/services/imports");
+    const out = await importBatch({ ...base, csv: good, dataset: "test", attested: false, collectionMethod: "synthetic" });
+    expect(out.ingest.inserted).toBe(3);
+    expect(await m.repo.countRounds("test")).toBe(3);
+    expect((await m.repo.allRounds({ dataset: "test" }))[0].dataset).toBe("test");
   });
 });

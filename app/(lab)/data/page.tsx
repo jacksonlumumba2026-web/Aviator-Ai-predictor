@@ -9,7 +9,8 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Section, SectionTitle } from "@/components/ui/section";
 import { authMode, isAdmin } from "@/lib/auth";
-import { DEMO_LABEL } from "@/lib/constants";
+import { DEMO_LABEL, TEST_LABEL } from "@/lib/constants";
+import { ImportBatches } from "@/components/lab/import-batches";
 import { getDataset } from "@/services/dataset";
 import { getRepository } from "@/services/repository";
 
@@ -18,6 +19,7 @@ export const metadata: Metadata = { title: "Data" };
 export default async function DataPage() {
   const repo = getRepository();
   const [dataset, admin, demoCount, sources] = await Promise.all([getDataset(), isAdmin(), repo.countRounds("demo"), repo.listDataSources()]);
+  const batches = await repo.listImportBatches(dataset);
   const mode = authMode();
 
   return (
@@ -43,10 +45,10 @@ export default async function DataPage() {
         <Section className="lg:col-span-3 !mb-0">
           <Card className="h-full">
             <CardHeader
-              eyebrow="CSV import"
-              title="Upload historical rounds"
-              description="Rows are validated in your browser first, then again on the server. Imports always go into the real dataset."
-              action={<Badge tone="brand">real dataset</Badge>}
+              eyebrow="Strict CSV import"
+              title="Import legitimately obtained round history"
+              description="Strict validation (timezone required, impossible values rejected, duplicates and gaps detected) in your browser, then again on the server. Every import is recorded as a batch with provenance and checksums."
+              action={<Badge tone="brand">provenance recorded</Badge>}
             />
             <CardBody>
               <CsvImporter disabled={!admin} />
@@ -95,7 +97,14 @@ export default async function DataPage() {
         </div>
       </div>
 
-      <SectionTitle hint={dataset === "demo" ? DEMO_LABEL : "Real dataset"}>Stored rounds</SectionTitle>
+      <SectionTitle hint="Provenance of every import into the selected dataset">Import batches</SectionTitle>
+      <Section>
+        <Card className="overflow-hidden">
+          <ImportBatches batches={batches} />
+        </Card>
+      </Section>
+
+      <SectionTitle hint={dataset === "demo" ? DEMO_LABEL : dataset === "test" ? TEST_LABEL : "Real dataset"}>Stored rounds</SectionTitle>
       <Section>
         <Card className="overflow-hidden">
           <RoundsTable canEdit={admin} sources={sources.map((s) => s.source_name)} />

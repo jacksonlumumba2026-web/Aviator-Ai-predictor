@@ -33,7 +33,7 @@ export async function auditPrediction(id: string): Promise<PredictionAudit> {
   const p = await repo.getPrediction(id);
   if (!p) throw new HttpError(404, "Prediction not found");
   const run = p.model_run_id ? await repo.getModelRun(p.model_run_id) : null;
-  const dataset = p.is_demo ? "demo" : "real";
+  const dataset = p.dataset;
   const checks: AuditCheck[] = [];
   const add = (name: string, ok: boolean | null, detail: string) =>
     checks.push({ name, status: ok === null ? "skipped" : ok ? "pass" : "fail", detail });

@@ -122,3 +122,11 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+.test-stripes {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgb(180 140 255 / 0.14) 0 10px,
+    rgb(180 140 255 / 0.05) 10px 20px
+  );
+}

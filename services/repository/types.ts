@@ -1,4 +1,17 @@
-import type { DataSource, Dataset, ModelRun, NewModelRun, NewPrediction, NewRound, Prediction, Round } from "@/types";
+import type {
+  DataSource,
+  Dataset,
+  ImportBatch,
+  ModelRun,
+  NewImportBatch,
+  NewModelRun,
+  NewPrediction,
+  NewRound,
+  NewValidationRun,
+  Prediction,
+  Round,
+  ValidationRun,
+} from "@/types";
 
 export interface RoundFilter {
   dataset: Dataset;
@@ -13,6 +26,7 @@ export interface PredictionFilter {
   dataset: Dataset;
   kind?: "backtest" | "live";
   modelRunId?: string;
+  validationRunId?: string;
 }
 
 export interface Page<T> {
@@ -51,4 +65,14 @@ export interface Repository {
   getDataSource(name: string): Promise<DataSource | null>;
   upsertDataSource(src: Pick<DataSource, "source_name" | "source_type"> & Partial<DataSource>): Promise<DataSource>;
   updateDataSource(id: string, patch: Partial<Pick<DataSource, "enabled" | "notes" | "last_update">>): Promise<void>;
+
+  insertImportBatch(b: NewImportBatch): Promise<ImportBatch>;
+  updateImportBatch(id: string, patch: Partial<NewImportBatch>): Promise<void>;
+  listImportBatches(dataset: Dataset): Promise<ImportBatch[]>;
+  deleteImportBatches(dataset: Dataset): Promise<void>;
+
+  insertValidationRun(r: NewValidationRun): Promise<ValidationRun>;
+  updateValidationRun(id: string, patch: Partial<Omit<ValidationRun, "id">>): Promise<void>;
+  listValidationRuns(dataset: Dataset): Promise<ValidationRun[]>;
+  getValidationRun(id: string): Promise<ValidationRun | null>;
 }

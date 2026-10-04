@@ -22,13 +22,20 @@ export async function ingestRounds(input: {
   sourceType: SourceType;
   dataset: Dataset;
   autoPredict?: boolean;
+  importBatchId?: string | null;
 }): Promise<IngestResult> {
   const repo = getRepository();
   const existing = await repo.existingRoundTimes(input.dataset, input.rows.map((r) => r.round_time));
   const fresh = input.rows.filter((r) => !existing.has(r.round_time));
   const inserted = fresh.length
     ? await repo.insertRounds(
-        fresh.map((r) => ({ multiplier: r.multiplier, round_time: r.round_time, source: input.source, is_demo: input.dataset === "demo" })),
+        fresh.map((r) => ({
+          multiplier: r.multiplier,
+          round_time: r.round_time,
+          source: input.source,
+          dataset: input.dataset,
+          import_batch_id: input.importBatchId ?? null,
+        })),
       )
     : 0;
 

@@ -31,12 +31,13 @@ function StatusRow({ label, state, detail }: { label: string; state: "ok" | "war
 
 export default async function SettingsPage() {
   const repo = getRepository();
-  const [dataset, admin, sources, real, demo, ml] = await Promise.all([
+  const [dataset, admin, sources, real, demo, test, ml] = await Promise.all([
     getDataset(),
     isAdmin(),
     repo.listDataSources(),
     repo.countRounds("real"),
     repo.countRounds("demo"),
+    repo.countRounds("test"),
     mlConfigured() ? mlHealth().then(() => true).catch(() => false) : Promise.resolve(null),
   ]);
   const mode = authMode();
@@ -50,7 +51,7 @@ export default async function SettingsPage() {
           <Card className="h-full">
             <CardHeader eyebrow="Dataset" title="What is being analysed" description="Real and demo data are kept strictly separate. Every page, model and metric uses only the selected dataset." />
             <CardBody>
-              <DatasetSwitcher dataset={dataset} counts={{ real, demo }} />
+              <DatasetSwitcher dataset={dataset} counts={{ real, demo, test }} />
             </CardBody>
           </Card>
         </Section>

@@ -17,6 +17,8 @@ export const DISCLAIMER =
   "Experimental statistical analysis. Results are uncertain and do not guarantee future outcomes or profits.";
 export const ESTIMATE_LABEL = "Experimental statistical estimate — not a guaranteed prediction.";
 export const DEMO_LABEL = "DEMO DATA — NOT REAL GAME RESULTS";
+export const TEST_LABEL = "TEST DATA — SYNTHETIC / FIXTURE DATA, NOT REAL GAME RESULTS";
+export const REAL_LABEL = "REAL DATA — ATTESTED GAME OBSERVATIONS";
 export const NO_EDGE_LABEL = "No statistically meaningful predictive edge detected.";
 export const LIVE_NOT_CONNECTED = "Live feed not connected — using stored historical data.";
 

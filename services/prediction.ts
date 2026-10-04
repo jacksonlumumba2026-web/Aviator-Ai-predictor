@@ -59,7 +59,7 @@ export async function generateNextEstimate(dataset: Dataset): Promise<{ predicti
     model_version: run.model_version,
     model_run_id: run.id,
     kind: "live",
-    is_demo: dataset === "demo",
+    dataset,
     based_on_round_time: last.round_time,
     probability_1_5x: out.probabilities["1.5x"],
     probability_2x: out.probabilities["2x"],

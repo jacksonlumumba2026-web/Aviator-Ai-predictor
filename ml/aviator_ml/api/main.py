@@ -8,6 +8,7 @@ talk to it directly.
 from __future__ import annotations
 
 import hmac
+import os
 import logging
 import threading
 import time
@@ -22,6 +23,19 @@ from .. import __version__
 from ..config import MIN_HISTORY, THRESHOLDS, load_settings
 from ..models.store import list_versions, load_artifact, save_artifact
 from ..features.engineering import next_round_features
+from ..protocol import jobs as protocol_jobs
+from ..protocol.freeze import is_frozen_and_unchanged, load_frozen
+from ..protocol.protocol import (
+    CLASSIFICATION_CRITERIA,
+    PROTOCOL_VERSION,
+    REQUIREMENTS,
+    ProtocolError,
+    describe_confirmation,
+    describe_final_test,
+    protocol_sha256,
+    run_confirmation,
+    run_final_test,
+)
 from ..training.experiment import InsufficientDataError, Round, predict_from_snapshot, predict_next, run_experiment
 
 log = logging.getLogger("aviator_ml")
@@ -52,6 +66,15 @@ _hits_lock = threading.Lock()
 
 
 def require_auth(request: Request) -> None:
+    _check(request, "default", settings.rate_limit_per_minute)
+
+
+def require_auth_polling(request: Request) -> None:
+    """Cheap status polling gets its own, higher limit."""
+    _check(request, "poll", max(600, settings.rate_limit_per_minute))
+
+
+def _check(request: Request, bucket: str, limit: int) -> None:
     token = settings.service_token
     if token:
         header = request.headers.get("authorization", "")
@@ -59,13 +82,13 @@ def require_auth(request: Request) -> None:
         if not hmac.compare_digest(supplied.encode(), token.encode()):
             raise HTTPException(status_code=401, detail="invalid or missing service token")
 
-    client = request.client.host if request.client else "unknown"
+    client = f"{bucket}:{request.client.host if request.client else 'unknown'}"
     now = time.monotonic()
     with _hits_lock:
         q = _hits[client]
         while q and now - q[0] > 60:
             q.popleft()
-        if len(q) >= settings.rate_limit_per_minute:
+        if len(q) >= limit:
             raise HTTPException(status_code=429, detail="rate limit exceeded")
         q.append(now)
 
@@ -89,7 +112,7 @@ class RoundIn(BaseModel):
 
 class TrainRequest(BaseModel):
     rounds: list[RoundIn]
-    dataset: str = Field(default="real", pattern="^(real|demo)$")
+    dataset: str = Field(default="real", pattern="^(real|demo|test)$")
     refit_every: int | None = Field(default=None, ge=10, le=10_000)
 
 
@@ -211,3 +234,75 @@ def features(req: FeaturesRequest) -> dict:
     if any(x < 1 or x != x for x in req.multipliers):
         raise HTTPException(422, "multipliers must be >= 1")
     return {"features": next_round_features(req.multipliers)}
+
+
+# --------------------------------------------------------------------------- #
+# Frozen real-data validation protocol
+# --------------------------------------------------------------------------- #
+JOB_DIR = os.path.join(settings.artifact_dir, "jobs")
+
+
+class ProtocolRequest(BaseModel):
+    rounds: list[RoundIn]
+    dataset: str = Field(pattern="^(real|demo|test)$")
+    stage: str = Field(pattern="^(final_test|confirmation)$")
+    stage1: dict | None = None
+    overrides: dict[str, int] | None = None
+
+
+def _protocol_guard(req: ProtocolRequest) -> list[Round]:
+    if len(req.rounds) > settings.max_rounds:
+        raise HTTPException(413, f"too many rounds (max {settings.max_rounds})")
+    if req.dataset == "real":
+        if req.overrides:
+            raise HTTPException(422, "protocol requirements cannot be overridden for REAL data")
+        if not is_frozen_and_unchanged():
+            raise HTTPException(409, "protocol is not frozen or its code changed since freezing — REAL-data evaluation refused")
+    if req.stage == "confirmation" and not req.stage1:
+        raise HTTPException(422, "confirmation requires the completed final-test result")
+    return [Round(multiplier=r.multiplier, round_time=r.round_time) for r in req.rounds]
+
+
+@app.get("/protocol/info", dependencies=[Depends(require_auth)])
+def protocol_info() -> dict:
+    frozen = load_frozen()
+    return {
+        "protocol_version": PROTOCOL_VERSION,
+        "protocol_sha256": protocol_sha256(),
+        "frozen": frozen,
+        "frozen_and_unchanged": is_frozen_and_unchanged(),
+        "requirements": REQUIREMENTS,
+        "criteria": CLASSIFICATION_CRITERIA,
+    }
+
+
+@app.post("/protocol/describe", dependencies=[Depends(require_auth)])
+def protocol_describe(req: ProtocolRequest) -> dict:
+    rounds = _protocol_guard(req)
+    try:
+        if req.stage == "final_test":
+            return describe_final_test(rounds, req.dataset, req.overrides)
+        return describe_confirmation(rounds, req.dataset, req.stage1["window_end"], req.overrides)
+    except ProtocolError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/protocol/jobs", dependencies=[Depends(require_auth)])
+def protocol_start(req: ProtocolRequest) -> dict:
+    rounds = _protocol_guard(req)
+    protocol_describe(req)  # validate requirements synchronously before queueing
+    if req.stage == "final_test":
+        return protocol_jobs.submit(JOB_DIR, "final_test", lambda: run_final_test(rounds, req.dataset, req.overrides))
+    stage1 = req.stage1
+    return protocol_jobs.submit(JOB_DIR, "confirmation", lambda: run_confirmation(rounds, req.dataset, stage1, req.overrides))
+
+
+@app.get("/protocol/jobs/{job_id}", dependencies=[Depends(require_auth_polling)])
+def protocol_job(job_id: str) -> dict:
+    try:
+        job = protocol_jobs.get(JOB_DIR, job_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if job is None:
+        raise HTTPException(404, "job not found")
+    return job

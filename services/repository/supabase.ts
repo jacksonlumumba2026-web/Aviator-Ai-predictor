@@ -1,11 +1,10 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServiceClient } from "@/lib/supabase/server";
-import type { DataSource, Dataset, ModelRun, Prediction, Round } from "@/types";
+import type { DataSource, Dataset, ImportBatch, ModelRun, Prediction, Round, ValidationRun } from "@/types";
 import type { PredictionFilter, Repository, RoundFilter } from "./types";
 
 const PAGE = 1000;
-const isDemo = (d: Dataset) => d === "demo";
 
 function check<T>(res: { data: T | null; error: { message: string } | null }): T {
   if (res.error) throw new Error(`Supabase: ${res.error.message}`);
@@ -17,12 +16,25 @@ const toRound = (r: Record<string, unknown>): Round => ({
   multiplier: Number(r.multiplier),
   round_time: new Date(String(r.round_time)).toISOString(),
   source: String(r.source),
-  is_demo: Boolean(r.is_demo),
+  dataset: r.dataset as Dataset,
+  import_batch_id: (r.import_batch_id as string | null) ?? null,
   created_at: new Date(String(r.created_at)).toISOString(),
 });
 
 /** PostgREST renders timestamptz as "...+00:00"; the app compares canonical ISO "Z" strings. */
 const isoOrNull = (v: unknown) => (v === null || v === undefined ? null : new Date(String(v)).toISOString());
+
+const TIME_FIELDS = [
+  "created_at", "imported_at", "registered_at", "completed_at", "last_update", "first_round_time", "last_round_time",
+  "collected_from", "collected_to", "window_start", "window_end",
+];
+/** Canonicalise every known timestamp column of a row. */
+function normTimes<T>(row: T): T {
+  if (!row) return row;
+  const r = { ...(row as Record<string, unknown>) };
+  for (const k of TIME_FIELDS) if (k in r) r[k] = isoOrNull(r[k]);
+  return r as T;
+}
 
 const toPrediction = (r: Record<string, unknown>): Prediction =>
   ({
@@ -42,7 +54,7 @@ export class SupabaseRepository implements Repository {
   }
 
   private roundsQuery(filter: RoundFilter, count = false) {
-    let q = this.db.from("aviator_rounds").select("*", count ? { count: "exact" } : undefined).eq("is_demo", isDemo(filter.dataset));
+    let q = this.db.from("aviator_rounds").select("*", count ? { count: "exact" } : undefined).eq("dataset", filter.dataset);
     if (filter.from) q = q.gte("round_time", filter.from);
     if (filter.to) q = q.lte("round_time", filter.to);
     if (filter.minMultiplier !== undefined) q = q.gte("multiplier", filter.minMultiplier);
@@ -72,13 +84,13 @@ export class SupabaseRepository implements Repository {
 
   async latestRounds(dataset: Dataset, n: number) {
     const rows = check(
-      await this.db.from("aviator_rounds").select("*").eq("is_demo", isDemo(dataset)).order("round_time", { ascending: false }).limit(n),
+      await this.db.from("aviator_rounds").select("*").eq("dataset", dataset).order("round_time", { ascending: false }).limit(n),
     ) as Record<string, unknown>[];
     return rows.map(toRound).reverse();
   }
 
   async countRounds(dataset: Dataset) {
-    const res = await this.db.from("aviator_rounds").select("id", { count: "exact", head: true }).eq("is_demo", isDemo(dataset));
+    const res = await this.db.from("aviator_rounds").select("id", { count: "exact", head: true }).eq("dataset", dataset);
     if (res.error) throw new Error(`Supabase: ${res.error.message}`);
     return res.count ?? 0;
   }
@@ -88,7 +100,7 @@ export class SupabaseRepository implements Repository {
     for (let i = 0; i < times.length; i += 200) {
       const chunk = times.slice(i, i + 200);
       const rows = check(
-        await this.db.from("aviator_rounds").select("round_time").eq("is_demo", isDemo(dataset)).in("round_time", chunk),
+        await this.db.from("aviator_rounds").select("round_time").eq("dataset", dataset).in("round_time", chunk),
       ) as { round_time: string }[];
       rows.forEach((r) => found.add(new Date(r.round_time).toISOString()));
     }
@@ -100,7 +112,7 @@ export class SupabaseRepository implements Repository {
     for (let i = 0; i < rows.length; i += PAGE) {
       const chunk = rows.slice(i, i + PAGE);
       const data = check(
-        await this.db.from("aviator_rounds").upsert(chunk, { onConflict: "is_demo,round_time", ignoreDuplicates: true }).select("id"),
+        await this.db.from("aviator_rounds").upsert(chunk, { onConflict: "dataset,round_time", ignoreDuplicates: true }).select("id"),
       ) as unknown[];
       inserted += data.length;
     }
@@ -109,13 +121,13 @@ export class SupabaseRepository implements Repository {
 
   async deleteRounds(dataset: Dataset, ids: string[]) {
     const data = check(
-      await this.db.from("aviator_rounds").delete().eq("is_demo", isDemo(dataset)).in("id", ids).select("id"),
+      await this.db.from("aviator_rounds").delete().eq("dataset", dataset).in("id", ids).select("id"),
     ) as unknown[];
     return data.length;
   }
 
   async deleteAllRounds(dataset: Dataset) {
-    const res = await this.db.from("aviator_rounds").delete({ count: "exact" }).eq("is_demo", isDemo(dataset));
+    const res = await this.db.from("aviator_rounds").delete({ count: "exact" }).eq("dataset", dataset);
     if (res.error) throw new Error(`Supabase: ${res.error.message}`);
     return res.count ?? 0;
   }
@@ -128,9 +140,10 @@ export class SupabaseRepository implements Repository {
   }
 
   private predictionsQuery(filter: PredictionFilter, count = false) {
-    let q = this.db.from("predictions").select("*", count ? { count: "exact" } : undefined).eq("is_demo", isDemo(filter.dataset));
+    let q = this.db.from("predictions").select("*", count ? { count: "exact" } : undefined).eq("dataset", filter.dataset);
     if (filter.kind) q = q.eq("kind", filter.kind);
     if (filter.modelRunId) q = q.eq("model_run_id", filter.modelRunId);
+    if (filter.validationRunId) q = q.eq("validation_run_id", filter.validationRunId);
     return q;
   }
 
@@ -158,7 +171,7 @@ export class SupabaseRepository implements Repository {
       await this.db
         .from("predictions")
         .select("*")
-        .eq("is_demo", isDemo(dataset))
+        .eq("dataset", dataset)
         .eq("kind", "live")
         .eq("result", "pending")
         .order("prediction_time", { ascending: true })
@@ -177,41 +190,83 @@ export class SupabaseRepository implements Repository {
   }
 
   async deletePredictions(dataset: Dataset) {
-    check(await this.db.from("predictions").delete().eq("is_demo", isDemo(dataset)));
+    check(await this.db.from("predictions").delete().eq("dataset", dataset));
   }
 
   async insertModelRun(run: Parameters<Repository["insertModelRun"]>[0]) {
-    return check(await this.db.from("model_runs").insert(run).select("*").single()) as ModelRun;
+    return normTimes(check(await this.db.from("model_runs").insert(run).select("*").single()) as ModelRun);
   }
 
   async listModelRuns(dataset: Dataset, limit: number) {
-    return check(
-      await this.db.from("model_runs").select("*").eq("is_demo", isDemo(dataset)).order("created_at", { ascending: false }).limit(limit),
-    ) as ModelRun[];
+    return (
+      check(
+        await this.db.from("model_runs").select("*").eq("dataset", dataset).order("created_at", { ascending: false }).limit(limit),
+      ) as ModelRun[]
+    ).map(normTimes);
   }
 
   async getModelRun(id: string) {
     const res = await this.db.from("model_runs").select("*").eq("id", id).maybeSingle();
-    return check(res) as ModelRun | null;
+    return normTimes(check(res) as ModelRun | null);
   }
 
   async deleteModelRuns(dataset: Dataset) {
-    check(await this.db.from("model_runs").delete().eq("is_demo", isDemo(dataset)));
+    check(await this.db.from("model_runs").delete().eq("dataset", dataset));
   }
 
   async listDataSources() {
-    return check(await this.db.from("data_sources").select("*").order("created_at")) as DataSource[];
+    return (check(await this.db.from("data_sources").select("*").order("created_at")) as DataSource[]).map(normTimes);
   }
 
   async getDataSource(name: string) {
-    return check(await this.db.from("data_sources").select("*").eq("source_name", name).maybeSingle()) as DataSource | null;
+    return normTimes(check(await this.db.from("data_sources").select("*").eq("source_name", name).maybeSingle()) as DataSource | null);
   }
 
   async upsertDataSource(src: Parameters<Repository["upsertDataSource"]>[0]) {
-    return check(await this.db.from("data_sources").upsert(src, { onConflict: "source_name" }).select("*").single()) as DataSource;
+    return normTimes(check(await this.db.from("data_sources").upsert(src, { onConflict: "source_name" }).select("*").single()) as DataSource);
   }
 
   async updateDataSource(id: string, patch: Partial<Pick<DataSource, "enabled" | "notes" | "last_update">>) {
     check(await this.db.from("data_sources").update(patch).eq("id", id));
+  }
+
+  async insertImportBatch(b: Parameters<Repository["insertImportBatch"]>[0]) {
+    return normTimes(check(await this.db.from("import_batches").insert(b).select("*").single()) as ImportBatch);
+  }
+
+  async updateImportBatch(id: string, patch: Parameters<Repository["updateImportBatch"]>[1]) {
+    check(await this.db.from("import_batches").update(patch).eq("id", id));
+  }
+
+  async listImportBatches(dataset: Dataset) {
+    return (
+      check(
+        await this.db.from("import_batches").select("*").eq("dataset", dataset).order("imported_at", { ascending: false }).limit(200),
+      ) as ImportBatch[]
+    ).map(normTimes);
+  }
+
+  async deleteImportBatches(dataset: Dataset) {
+    check(await this.db.from("import_batches").delete().eq("dataset", dataset));
+  }
+
+  async insertValidationRun(r: Parameters<Repository["insertValidationRun"]>[0]) {
+    const res = await this.db.from("validation_runs").insert(r).select("*").single();
+    if (res.error?.code === "23505") throw new Error("ALREADY_EVALUATED");
+    return normTimes(check(res) as ValidationRun);
+  }
+
+  async updateValidationRun(id: string, patch: Parameters<Repository["updateValidationRun"]>[1]) {
+    check(await this.db.from("validation_runs").update(patch).eq("id", id));
+  }
+
+  async listValidationRuns(dataset: Dataset) {
+    return (
+      check(await this.db.from("validation_runs").select("*").eq("dataset", dataset).order("registered_at", { ascending: false })) as ValidationRun[]
+    ).map(normTimes);
+  }
+
+  async getValidationRun(id: string) {
+    return normTimes(check(await this.db.from("validation_runs").select("*").eq("id", id).maybeSingle()) as ValidationRun | null);
   }
 }

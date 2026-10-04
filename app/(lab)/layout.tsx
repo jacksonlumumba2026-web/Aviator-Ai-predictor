@@ -7,14 +7,15 @@ export const dynamic = "force-dynamic";
 
 export default async function LabLayout({ children }: { children: React.ReactNode }) {
   const repo = getRepository();
-  const [dataset, real, demo, live] = await Promise.all([
+  const [dataset, real, demo, test, live] = await Promise.all([
     getDataset(),
     repo.countRounds("real"),
     repo.countRounds("demo"),
+    repo.countRounds("test"),
     getLiveStatus(),
   ]);
   return (
-    <Shell dataset={dataset} counts={{ real, demo }} storage={repo.kind} liveConnected={live.connected && dataset === "real"}>
+    <Shell dataset={dataset} counts={{ real, demo, test }} storage={repo.kind} liveConnected={live.connected && dataset === "real"}>
       {children}
     </Shell>
   );

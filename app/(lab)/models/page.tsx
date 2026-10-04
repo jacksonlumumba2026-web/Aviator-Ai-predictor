@@ -85,7 +85,7 @@ export default async function ModelsPage() {
               <CardHeader
                 eyebrow="Current model"
                 title={<span className="font-mono text-base">{current.model_version}</span>}
-                description={`Trained ${dateTime(current.created_at)} on the ${current.is_demo ? "DEMO" : "real"} dataset`}
+                description={`Trained ${dateTime(current.created_at)} on the ${current.dataset.toUpperCase()} dataset`}
                 action={<ConfidenceBadge level={current.confidence} />}
               />
               <CardBody className="space-y-6">

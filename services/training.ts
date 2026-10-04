@@ -22,7 +22,7 @@ export async function trainModel(dataset: Dataset): Promise<ModelRun> {
 
   const run = await repo.insertModelRun({
     model_version: res.summary.model_version,
-    is_demo: dataset === "demo",
+    dataset,
     training_samples: Number(res.splits.train),
     validation_samples: Number(res.splits.validation),
     test_samples: Number(res.splits.test),
@@ -47,7 +47,7 @@ export async function trainModel(dataset: Dataset): Promise<ModelRun> {
       model_version: run.model_version,
       model_run_id: run.id,
       kind: "backtest",
-      is_demo: dataset === "demo",
+      dataset,
       based_on_round_time: iso(p.based_on_round_time),
       probability_1_5x: p.probabilities["1.5x"],
       probability_2x: p.probabilities["2x"],

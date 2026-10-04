@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MAX_MULTIPLIER } from "./constants";
 import { normaliseTime } from "./csv";
 
-export const datasetSchema = z.enum(["real", "demo"]);
+export const datasetSchema = z.enum(["real", "demo", "test"]);
 
 export const isoTime = z
   .string()
@@ -36,10 +36,21 @@ export const manualRoundSchema = z.object({
   source: sourceNameSchema.default("manual"),
 });
 
-export const csvImportSchema = z.object({
-  csv: z.string().min(1).max(8 * 1024 * 1024),
-  source: sourceNameSchema.default("csv_import"),
-});
+export const importRequestSchema = z
+  .object({
+    csv: z.string().min(1).max(8 * 1024 * 1024),
+    file_name: z.string().max(255).optional(),
+    dataset: z.enum(["real", "test"]),
+    source_name: sourceNameSchema,
+    collection_method: z.enum(["manual_record", "official_export", "authorized_api", "synthetic", "other"]),
+    provenance_notes: z.string().trim().min(10, "describe where and how the data was obtained (≥ 10 characters)").max(4000),
+    attested: z.boolean().default(false),
+    collected_from: isoTime.optional(),
+    collected_to: isoTime.optional(),
+    accept_issues: z.boolean().default(false),
+  })
+  .refine((v) => v.dataset !== "real" || v.collection_method !== "synthetic", { message: "synthetic data cannot be REAL DATA", path: ["collection_method"] })
+  .refine((v) => v.dataset !== "real" || v.attested, { message: "real data must be attested", path: ["attested"] });
 
 export const deleteRoundsSchema = z.object({
   ids: z.array(z.string().max(64)).min(1).max(5000),

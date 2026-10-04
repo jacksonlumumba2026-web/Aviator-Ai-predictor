@@ -5,7 +5,8 @@ import { useState } from "react";
 import { AlertTriangle, Menu, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Dataset } from "@/types";
-import { DEMO_LABEL, DISCLAIMER } from "@/lib/constants";
+import { DISCLAIMER } from "@/lib/constants";
+import { ProvenanceBar } from "./provenance";
 import { cn } from "../ui/cn";
 import { DatasetSwitcher } from "./dataset-switcher";
 import { LogoIcon, NAV } from "./nav-items";
@@ -132,14 +133,9 @@ export function Shell(props: ShellProps) {
         )}
       </AnimatePresence>
 
-      {dataset === "demo" && (
-        <div role="status" className="demo-stripes sticky top-[65px] z-20 border-b border-warn/30 lg:top-0">
-          <div className="mx-auto flex max-w-[1240px] items-center justify-center gap-2 px-4 py-2 text-center text-xs font-semibold tracking-[0.12em] text-warn uppercase">
-            <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
-            {DEMO_LABEL}
-          </div>
-        </div>
-      )}
+      <div className="sticky top-[65px] z-20 bg-bg/90 backdrop-blur-xl lg:top-0">
+        <ProvenanceBar dataset={dataset} rounds={props.counts[dataset]} />
+      </div>
 
       <main className="mx-auto max-w-[1240px] px-4 pt-10 pb-16 sm:px-6 md:pt-16 lg:px-10 lg:pt-20">{children}</main>
 
