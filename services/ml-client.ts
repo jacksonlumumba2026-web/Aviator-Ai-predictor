@@ -1,6 +1,7 @@
 import "server-only";
 import { env, mlConfigured } from "@/lib/env";
 import { HttpError } from "@/lib/http";
+import type { SignalLevel } from "@/lib/evaluation";
 import type { Confidence, Dataset, ThresholdKey, Verdict } from "@/types";
 
 export interface MlTrainResponse {
@@ -21,13 +22,17 @@ export interface MlTrainResponse {
   selection: Record<string, import("@/types").ThresholdSelection>;
   metrics: Record<string, unknown>;
   verdict: Verdict;
+  signal: SignalLevel;
   confidence: Confidence;
   feature_names: string[];
   test_predictions: {
     round_index: number;
     round_time: string;
+    based_on_round_time: string;
+    train_end_round_time: string;
     probabilities: Record<ThresholdKey, number>;
     baseline_probabilities: Record<ThresholdKey, number>;
+    features: Record<string, number>;
     predicted_class: string;
     actual_multiplier: number;
     actual_class: string;
@@ -39,8 +44,10 @@ export interface MlPredictResponse {
   dataset: Dataset;
   probabilities: Record<ThresholdKey, number>;
   predicted_class: string;
+  features: Record<string, number>;
   confidence: Confidence;
   verdict: Verdict;
+  signal: SignalLevel;
   disclaimer: string;
 }
 
@@ -76,6 +83,15 @@ export const mlHealth = () =>
 
 export const mlTrain = (rounds: { multiplier: number; round_time: string }[], dataset: Dataset) =>
   call<MlTrainResponse>("/train", { method: "POST", body: JSON.stringify({ rounds, dataset }), timeoutMs: 280_000 });
+
+export const mlReplay = (modelVersion: string, features: Record<string, number>) =>
+  call<{ probabilities: Record<ThresholdKey, number>; predicted_class: string }>("/audit/replay", {
+    method: "POST",
+    body: JSON.stringify({ model_version: modelVersion, features }),
+  });
+
+export const mlFeatures = (multipliers: number[]) =>
+  call<{ features: Record<string, number> }>("/audit/features", { method: "POST", body: JSON.stringify({ multipliers }) });
 
 export const mlPredict = (modelVersion: string, multipliers: number[]) =>
   call<MlPredictResponse>("/predict", {

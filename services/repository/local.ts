@@ -161,7 +161,11 @@ export class LocalRepository implements Repository {
     return (await this.allPredictions({ dataset, kind: "live" })).filter((p) => p.result === "pending");
   }
 
-  async updatePrediction(id: string, patch: Partial<Pick<Prediction, "actual_multiplier" | "result">>) {
+  async getPrediction(id: string) {
+    return (await this.load()).predictions.find((p) => p.id === id) ?? null;
+  }
+
+  async updatePrediction(id: string, patch: Partial<Pick<Prediction, "actual_multiplier" | "result" | "target_round_time">>) {
     await this.mutate((d) => {
       const p = d.predictions.find((x) => x.id === id);
       if (p) Object.assign(p, patch);

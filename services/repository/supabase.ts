@@ -18,14 +18,21 @@ const toRound = (r: Record<string, unknown>): Round => ({
   round_time: new Date(String(r.round_time)).toISOString(),
   source: String(r.source),
   is_demo: Boolean(r.is_demo),
-  created_at: String(r.created_at),
+  created_at: new Date(String(r.created_at)).toISOString(),
 });
+
+/** PostgREST renders timestamptz as "...+00:00"; the app compares canonical ISO "Z" strings. */
+const isoOrNull = (v: unknown) => (v === null || v === undefined ? null : new Date(String(v)).toISOString());
 
 const toPrediction = (r: Record<string, unknown>): Prediction =>
   ({
     ...r,
     actual_multiplier: r.actual_multiplier === null ? null : Number(r.actual_multiplier),
     prediction_time: new Date(String(r.prediction_time)).toISOString(),
+    based_on_round_time: isoOrNull(r.based_on_round_time),
+    train_end_round_time: isoOrNull(r.train_end_round_time),
+    target_round_time: isoOrNull(r.target_round_time),
+    created_at: new Date(String(r.created_at)).toISOString(),
   }) as Prediction;
 
 export class SupabaseRepository implements Repository {
@@ -160,7 +167,12 @@ export class SupabaseRepository implements Repository {
     return rows.map(toPrediction);
   }
 
-  async updatePrediction(id: string, patch: Partial<Pick<Prediction, "actual_multiplier" | "result">>) {
+  async getPrediction(id: string) {
+    const row = check(await this.db.from("predictions").select("*").eq("id", id).maybeSingle()) as Record<string, unknown> | null;
+    return row ? toPrediction(row) : null;
+  }
+
+  async updatePrediction(id: string, patch: Partial<Pick<Prediction, "actual_multiplier" | "result" | "target_round_time">>) {
     check(await this.db.from("predictions").update(patch).eq("id", id));
   }
 

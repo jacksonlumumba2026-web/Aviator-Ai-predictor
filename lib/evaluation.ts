@@ -25,7 +25,7 @@ export interface ThresholdEvaluation {
   baseline_accuracy_ci: [number, number];
   accuracy_improvement: number;
   mcnemar_p: number;
-  precision: number;
+  precision: number | null;
   recall: number;
   f1: number;
   positive_predictions: number;
@@ -42,8 +42,16 @@ export interface ThresholdEvaluation {
   calibration: CalibrationBin[];
   ece: number;
   confusion_matrix: { tp: number; fp: number; tn: number; fn: number };
+  baseline_precision: number | null;
+  baseline_recall: number;
+  baseline_f1: number;
+  baseline_roc_auc: number | null;
+  baseline_ece: number;
+  stability: { first_half_bss: number; second_half_bss: number };
   verdict: Verdict;
 }
+
+export type SignalLevel = "NO_RELIABLE_EDGE" | "WEAK_SIGNAL" | "PROMISING_SIGNAL" | "STRONGER_SIGNAL" | "INSUFFICIENT_DATA";
 
 export function rocAuc(y: readonly number[], p: readonly number[]): number | null {
   const n = y.length;
@@ -105,6 +113,33 @@ export function mcnemarP(modelCorrect: readonly boolean[], baseCorrect: readonly
   return erfc(Math.sqrt(chi2 / 2));
 }
 
+function classification(y: readonly number[], pred: readonly number[]) {
+  let tp = 0, fp = 0, fn = 0;
+  for (let i = 0; i < y.length; i++) {
+    if (pred[i] === 1 && y[i] === 1) tp++;
+    else if (pred[i] === 1) fp++;
+    else if (y[i] === 1) fn++;
+  }
+  // Precision is undefined (null) when no positive calls are made.
+  const precision = tp + fp ? tp / (tp + fp) : null;
+  const recall = tp + fn ? tp / (tp + fn) : 0;
+  return { precision, recall, f1: precision && precision + recall ? (2 * precision * recall) / (precision + recall) : 0 };
+}
+
+function eceOf(bins: CalibrationBin[], n: number) {
+  return n ? bins.reduce((acc, b) => (b.count ? acc + (b.count / n) * Math.abs(b.mean_predicted! - b.observed_rate!) : acc), 0) : 0;
+}
+
+function bssOf(y: readonly number[], p: readonly number[], b: readonly number[]) {
+  if (!y.length) return 0;
+  let e = 0, eb = 0;
+  for (let i = 0; i < y.length; i++) {
+    e += (p[i] - y[i]) ** 2;
+    eb += (b[i] - y[i]) ** 2;
+  }
+  return eb > 0 ? 1 - e / eb : 0;
+}
+
 export function evaluateThreshold(
   y: readonly number[],
   p: readonly number[],
@@ -143,9 +178,10 @@ export function evaluateThreshold(
   const nNeg = n - nPos;
   const accuracy = n ? correctCount / n : 0;
   const baselineAccuracy = n ? baseCorrectCount / n : 0;
-  const precision = tp + fp ? tp / (tp + fp) : 0;
-  const recall = tp + fn ? tp / (tp + fn) : 0;
-  const f1 = precision + recall ? (2 * precision * recall) / (precision + recall) : 0;
+  const { precision, recall, f1 } = classification(
+    y,
+    p.map((v) => (v >= DECISION_THRESHOLD ? 1 : 0)),
+  );
   const brier = n ? brierSum / n : 0;
   const baselineBrier = n ? baseBrierSum / n : 0;
   const bss = baselineBrier > 0 ? 1 - brier / baselineBrier : 0;
@@ -172,9 +208,13 @@ export function evaluateThreshold(
   const auc = rocAuc(y, p);
   const aucCi = aucInterval(auc, nPos, nNeg);
   const calibration = calibrationBins(y, p);
-  const ece = n
-    ? calibration.reduce((acc, b) => (b.count ? acc + (b.count / n) * Math.abs(b.mean_predicted! - b.observed_rate!) : acc), 0)
-    : 0;
+  const ece = eceOf(calibration, n);
+  const baseCls = classification(y, base.map((v) => (v >= DECISION_THRESHOLD ? 1 : 0)));
+  const half = Math.floor(n / 2);
+  const stability = {
+    first_half_bss: bssOf(y.slice(0, half), p.slice(0, half), base.slice(0, half)),
+    second_half_bss: bssOf(y.slice(half), p.slice(half), base.slice(half)),
+  };
 
   const alphaAdj = ALPHA / Math.max(nComparisons, 1);
   const sufficient = n >= MIN_TEST_SAMPLES && nPos >= MIN_CLASS_COUNT && nNeg >= MIN_CLASS_COUNT;
@@ -209,6 +249,13 @@ export function evaluateThreshold(
     calibration,
     ece,
     confusion_matrix: { tp, fp, tn, fn },
+    baseline_precision: baseCls.precision,
+    baseline_recall: baseCls.recall,
+    baseline_f1: baseCls.f1,
+    // A base-rate predictor has no discriminative ability: AUC 0.5 by definition.
+    baseline_roc_auc: 0.5,
+    baseline_ece: eceOf(calibrationBins(y, base), n),
+    stability,
     verdict: !sufficient ? "insufficient_data" : edge ? "edge_detected" : "no_edge",
   };
 }
@@ -220,12 +267,23 @@ export function overallVerdict(results: Partial<Record<ThresholdKey, ThresholdEv
   return "no_edge";
 }
 
+/** Conservative evidence classification — mirrors classify_signal() in Python. */
+export function classifySignal(results: Partial<Record<ThresholdKey, ThresholdEvaluation>>): SignalLevel {
+  const rows = Object.values(results) as ThresholdEvaluation[];
+  if (!rows.length || rows.every((r) => r.verdict === "insufficient_data")) return "INSUFFICIENT_DATA";
+  const passed = rows.filter((r) => r.verdict === "edge_detected");
+  const replicated = passed.filter((r) => r.n >= 1000 && r.stability.first_half_bss > 0 && r.stability.second_half_bss > 0);
+  if (replicated.length >= 2) return "STRONGER_SIGNAL";
+  if (passed.length) return "PROMISING_SIGNAL";
+  const nominal = rows.some(
+    (r) => r.verdict !== "insufficient_data" && r.brier_p_value < ALPHA && r.brier_skill_score > 0 && (r.roc_auc ?? 0) > 0.5,
+  );
+  return nominal ? "WEAK_SIGNAL" : "NO_RELIABLE_EDGE";
+}
+
 export function confidenceFrom(results: Partial<Record<ThresholdKey, ThresholdEvaluation>>): Confidence {
-  const all = Object.values(results) as ThresholdEvaluation[];
-  const edges = all.filter((r) => r.verdict === "edge_detected");
-  if (!edges.length) return "LOW";
-  const n = Math.max(...all.map((r) => r.n));
-  return edges.length >= 3 && n >= 2000 ? "HIGH" : "MEDIUM";
+  const s = classifySignal(results);
+  return s === "STRONGER_SIGNAL" ? "HIGH" : s === "PROMISING_SIGNAL" ? "MEDIUM" : "LOW";
 }
 
 export function probabilityOf(p: Prediction, key: ThresholdKey): number {
@@ -238,6 +296,7 @@ export interface BacktestEvaluation {
   resolved: number;
   perThreshold: Partial<Record<ThresholdKey, ThresholdEvaluation>>;
   verdict: Verdict;
+  signal: SignalLevel;
   confidence: Confidence;
 }
 
@@ -256,6 +315,7 @@ export function evaluatePredictions(rows: readonly Prediction[]): BacktestEvalua
     resolved: resolved.length,
     perThreshold,
     verdict: resolved.length ? overallVerdict(perThreshold) : "insufficient_data",
+    signal: resolved.length ? classifySignal(perThreshold) : "INSUFFICIENT_DATA",
     confidence: confidenceFrom(perThreshold),
   };
 }

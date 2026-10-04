@@ -73,7 +73,7 @@ export default async function PredictionsPage({ searchParams }: { searchParams: 
             ))}
           </div>
           <p className="text-xs text-ink-3">
-            {int(total)} rows · “Correct/Incorrect” scores the ≥2x call (predicts ≥2x when its probability ≥ 50%)
+            {int(total)} rows · “Correct/Incorrect” scores the ≥2x call (predicts ≥2x when its probability ≥ 50%) · click a time for its audit trail
           </p>
         </div>
 
@@ -111,7 +111,11 @@ export default async function PredictionsPage({ searchParams }: { searchParams: 
                 <tbody>
                   {rows.map((p) => (
                     <tr key={p.id} className="border-b border-line/60 transition hover:bg-white/[0.02]">
-                      <td className="px-6 py-3 whitespace-nowrap text-ink-2">{dateTime(p.prediction_time)}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-ink-2">
+                        <Link href={`/predictions/${p.id}`} className="underline decoration-line-strong underline-offset-4 hover:text-ink" title="Open audit trail">
+                          {dateTime(p.prediction_time)}
+                        </Link>
+                      </td>
                       <td className="max-w-[180px] truncate px-3 py-3 font-mono text-xs text-ink-3">{p.model_version}</td>
                       {THRESHOLDS.map((t) => {
                         const v = probabilityOf(p, t.key);

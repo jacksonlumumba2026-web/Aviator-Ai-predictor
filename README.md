@@ -183,9 +183,12 @@ purpose until a baseline shows real out-of-sample value.
 1. Drop the first 20 rounds (they only supply feature history).
 2. Split **chronologically, never shuffled**: 70% train · 15% validation · 15% test.
 3. For each target, choose the candidate with the lowest validation Brier score.
-4. **Walk-forward backtest** on the test window (`evaluation/backtest.py`). Every test
-   round is predicted by a model fit only on earlier rounds (expanding window, refit every
-   N rounds). The baseline is the base rate over the same past window.
+4. **Walk-forward backtest** (`evaluation/backtest.py`): an online simulation of the test
+   window. For each round it trains on revealed rounds, computes features from revealed
+   history, predicts, records, and only then reveals the outcome and advances. Outcomes
+   come from an iterator, so the simulator cannot see a round before predicting it. Refits
+   happen every N rounds on an expanding window (`refit_every=1` is supported). The
+   baseline is the base rate over the same past window.
 5. Make probabilities monotone, so P(≥3x) ≤ P(≥2x).
 6. Fit final models on all data for live estimates.
 
@@ -215,7 +218,9 @@ rows. A shared test fixture keeps the Python and TS results identical.
 |---|---|---|
 | GET  | `/health` | — |
 | POST | `/train` | `{ rounds: [{multiplier, round_time}], dataset: "real"\|"demo", refit_every? }` |
-| POST | `/predict` | `{ model_version, multipliers: number[] (≥20, chronological) }` |
+| POST | `/predict` | `{ model_version, multipliers: number[] (≥20, chronological) }` → probabilities + feature snapshot |
+| POST | `/audit/replay` | `{ model_version, features }`: replays a stored snapshot |
+| POST | `/audit/features` | `{ multipliers }`: recomputes next-round features |
 
 Authentication is `Authorization: Bearer $ML_SERVICE_TOKEN` (enforced when the token is
 set). Requests are rate-limited per client. Artifacts are saved as joblib files in
@@ -248,12 +253,35 @@ set). Requests are rate-limited per client. Artifacts are saved as joblib files 
   `docker build -t aviator-ml ml/`. Set `ML_SERVICE_TOKEN` and `ML_ARTIFACT_DIR` on a
   persistent volume, then point `ML_SERVICE_URL` at it.
 
-## Testing
+## Testing & audit
 
 ```bash
 npm run lint && npm run typecheck && npm test && npm run build
 cd ml && python -m pytest -q
+scripts/local-supabase.sh start && npm run test:integration   # Postgres + PostgREST, local only
 ```
+
+See **[docs/AUDIT_REPORT.md](docs/AUDIT_REPORT.md)** for the full audit: data-pipeline and
+statistics verification against SQL, leakage guarantees, per-target model-vs-baseline
+results, and the bugs it found.
+
+**Prediction audit trail.** Every prediction stores its feature snapshot, input-history
+end, training-window end and target round. Open any row on the Predictions page, or call
+`GET /api/predictions/:id/audit`, to re-derive it from the database: features are
+recomputed and compared, live estimates are replayed through the stored model artifact,
+and outcomes are re-scored.
+
+**Signal classification** (Dashboard → Model performance):
+
+- **NO RELIABLE EDGE**: nothing beats the base rate.
+- **WEAK SIGNAL**: nominal only. It fails multiple-comparison correction and is not
+  evidence.
+- **PROMISING SIGNAL**: at least one target passes the corrected test.
+- **STRONGER SIGNAL**: at least two targets pass, each on ≥1,000 test rounds, with positive
+  skill in both halves of the test period.
+
+Whenever the result isn't PROMISING or STRONGER, the UI shows *"Testing has not
+demonstrated a reliable predictive advantage."*
 
 The Python suite covers: no feature leakage, chronological splits, walk-forward fitting
 only on the past, **i.i.d. data → no edge**, **planted synthetic signal → edge

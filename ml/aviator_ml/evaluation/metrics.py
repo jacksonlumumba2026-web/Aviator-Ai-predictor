@@ -101,6 +101,24 @@ def mcnemar_p(model_correct: np.ndarray, baseline_correct: np.ndarray) -> float:
     return float(math.erfc(math.sqrt(chi2 / 2.0)))
 
 
+def _classification(y: np.ndarray, pred: np.ndarray) -> dict[str, float]:
+    tp = int(np.sum((pred == 1) & (y == 1)))
+    fp = int(np.sum((pred == 1) & (y == 0)))
+    fn = int(np.sum((pred == 0) & (y == 1)))
+    # Precision is undefined (None) when no positive calls are made.
+    precision = tp / (tp + fp) if (tp + fp) else None
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision and (precision + recall) else 0.0
+    return {"precision": precision, "recall": recall, "f1": f1}
+
+
+def _bss(y: np.ndarray, p: np.ndarray, b: np.ndarray) -> float:
+    if len(y) == 0:
+        return 0.0
+    bb = float(np.mean((b - y) ** 2))
+    return 1 - float(np.mean((p - y) ** 2)) / bb if bb > 0 else 0.0
+
+
 def evaluate_threshold(
     y: np.ndarray,
     p_model: np.ndarray,
@@ -126,9 +144,8 @@ def evaluate_threshold(
     base_correct = base_pred == y
     accuracy = float(correct.mean()) if n else 0.0
     baseline_accuracy = float(base_correct.mean()) if n else 0.0
-    precision = tp / (tp + fp) if (tp + fp) else 0.0
-    recall = tp / (tp + fn) if (tp + fn) else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    cls = _classification(y, pred)
+    precision, recall, f1 = cls["precision"], cls["recall"], cls["f1"]
 
     brier = float(np.mean((p - y) ** 2)) if n else 0.0
     brier_base = float(np.mean((b - y) ** 2)) if n else 0.0
@@ -150,6 +167,16 @@ def evaluate_threshold(
     auc = roc_auc(y, p)
     auc_ci = auc_interval(auc, n_pos, n_neg)
     bins = calibration_bins(y, p)
+    base_bins = calibration_bins(y, b)
+    base_cls = _classification(y, base_pred)
+    # A base-rate predictor has no discriminative ability: AUC 0.5 by definition.
+    # (Its slow drift across walk-forward refits is not a ranking signal.)
+    base_auc = 0.5
+    half = n // 2
+    stability = {
+        "first_half_bss": _bss(y[:half], p[:half], b[:half]),
+        "second_half_bss": _bss(y[half:], p[half:], b[half:]),
+    }
 
     alpha_adj = ALPHA / max(n_comparisons, 1)
     sufficient = n >= MIN_TEST_SAMPLES and n_pos >= MIN_CLASS_COUNT and n_neg >= MIN_CLASS_COUNT
@@ -180,6 +207,11 @@ def evaluate_threshold(
         "recall": recall,
         "f1": f1,
         "positive_predictions": int(pred.sum()),
+        "baseline_precision": base_cls["precision"],
+        "baseline_recall": base_cls["recall"],
+        "baseline_f1": base_cls["f1"],
+        "baseline_roc_auc": base_auc,
+        "baseline_ece": expected_calibration_error(base_bins, n),
         "roc_auc": auc,
         "roc_auc_ci": list(auc_ci) if auc_ci else None,
         "brier": brier,
@@ -193,6 +225,7 @@ def evaluate_threshold(
         "calibration": bins,
         "ece": expected_calibration_error(bins, n),
         "confusion_matrix": {"tp": tp, "fp": fp, "tn": tn, "fn": fn},
+        "stability": stability,
         "verdict": verdict,
     }
 
@@ -206,16 +239,48 @@ def overall_verdict(per_threshold: dict[str, dict[str, Any]]) -> str:
     return "no_edge"
 
 
-def confidence_level(per_threshold: dict[str, dict[str, Any]]) -> str:
-    """Confidence label for live estimates, derived *only* from backtest evidence.
+SIGNAL_LEVELS = ("NO_RELIABLE_EDGE", "WEAK_SIGNAL", "PROMISING_SIGNAL", "STRONGER_SIGNAL", "INSUFFICIENT_DATA")
 
-    LOW unless the out-of-sample backtest found a statistically significant
-    edge. Even HIGH means "evidence of some signal", never certainty.
+
+def classify_signal(per_threshold: dict[str, dict[str, Any]]) -> str:
+    """Conservative evidence classification. Mirrors lib/evaluation.ts.
+
+    STRONGER_SIGNAL   >= 2 targets pass the full test (Bonferroni-corrected Brier
+                      improvement AND ROC-AUC CI above 0.5), each with >= 1000
+                      test rounds and positive skill in BOTH halves of the test
+                      period (replication across time).
+    PROMISING_SIGNAL  >= 1 target passes the full corrected test.
+    WEAK_SIGNAL       no corrected pass, but some target has positive skill, AUC
+                      above 0.5 and nominal (uncorrected) p < 0.05. With five
+                      targets this happens by chance ~23% of the time under no
+                      signal — it is NOT evidence of an edge.
+    NO_RELIABLE_EDGE  otherwise.
+    INSUFFICIENT_DATA every target lacks enough test data to judge.
     """
-    edges = [r for r in per_threshold.values() if r["verdict"] == "edge_detected"]
-    if not edges:
-        return "LOW"
-    n = max(r["n"] for r in per_threshold.values())
-    if len(edges) >= 3 and n >= 2000:
-        return "HIGH"
-    return "MEDIUM"
+    rows = list(per_threshold.values())
+    if rows and all(r["verdict"] == "insufficient_data" for r in rows):
+        return "INSUFFICIENT_DATA"
+    passed = [r for r in rows if r["verdict"] == "edge_detected"]
+    replicated = [
+        r
+        for r in passed
+        if r["n"] >= 1000 and r["stability"]["first_half_bss"] > 0 and r["stability"]["second_half_bss"] > 0
+    ]
+    if len(replicated) >= 2:
+        return "STRONGER_SIGNAL"
+    if passed:
+        return "PROMISING_SIGNAL"
+    nominal = [
+        r
+        for r in rows
+        if r["verdict"] != "insufficient_data"
+        and r["brier_p_value"] < ALPHA
+        and r["brier_skill_score"] > 0
+        and (r["roc_auc"] or 0) > 0.5
+    ]
+    return "WEAK_SIGNAL" if nominal else "NO_RELIABLE_EDGE"
+
+
+def confidence_level(per_threshold: dict[str, dict[str, Any]]) -> str:
+    """Confidence label for live estimates, derived only from backtest evidence."""
+    return {"STRONGER_SIGNAL": "HIGH", "PROMISING_SIGNAL": "MEDIUM"}.get(classify_signal(per_threshold), "LOW")

@@ -33,6 +33,12 @@ def test_train_then_predict(monkeypatch, tmp_path):
     assert body["verdict"] in ("no_edge", "insufficient_data", "edge_detected")
     version = body["summary"]["model_version"]
     p = c.post("/predict", json={"model_version": version, "multipliers": iid_multipliers(50, 9).tolist()})
+    feats = p.json()["features"]
+    rp = c.post("/audit/replay", json={"model_version": version, "features": feats})
+    for k, v in p.json()["probabilities"].items():  # RF parallel averaging: last-bit differences only
+        assert abs(rp.json()["probabilities"][k] - v) < 1e-12
+    fx = c.post("/audit/features", json={"multipliers": iid_multipliers(50, 9).tolist()})
+    assert fx.json()["features"] == feats
     assert p.status_code == 200, p.text
     assert set(p.json()["probabilities"]) == {"1.5x", "2x", "3x", "5x", "10x"}
     assert "not a guaranteed prediction" in p.json()["disclaimer"]

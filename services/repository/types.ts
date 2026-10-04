@@ -38,7 +38,8 @@ export interface Repository {
   listPredictions(filter: PredictionFilter, opts: { limit: number; offset: number }): Promise<Page<Prediction>>;
   allPredictions(filter: PredictionFilter): Promise<Prediction[]>;
   pendingPredictions(dataset: Dataset): Promise<Prediction[]>;
-  updatePrediction(id: string, patch: Partial<Pick<Prediction, "actual_multiplier" | "result">>): Promise<void>;
+  getPrediction(id: string): Promise<Prediction | null>;
+  updatePrediction(id: string, patch: Partial<Pick<Prediction, "actual_multiplier" | "result" | "target_round_time">>): Promise<void>;
   deletePredictions(dataset: Dataset): Promise<void>;
 
   insertModelRun(run: NewModelRun): Promise<ModelRun>;

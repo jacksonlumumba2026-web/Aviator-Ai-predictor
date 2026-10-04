@@ -20,13 +20,14 @@ import { isAdmin } from "@/lib/auth";
 import { THRESHOLDS } from "@/lib/constants";
 import { dateTime, int, mult, num, pct, relativeTime } from "@/lib/format";
 import { getDataset } from "@/services/dataset";
-import { loadOverview } from "@/services/views";
+import { loadBacktest, loadOverview } from "@/services/views";
+import { ModelPerformance } from "@/components/lab/model-performance";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
   const dataset = await getDataset();
-  const [{ rounds, stats, rolling50, latestRun, latestEstimate }, admin] = await Promise.all([loadOverview(dataset), isAdmin()]);
+  const [{ rounds, stats, rolling50, latestRun, latestEstimate }, admin, bt] = await Promise.all([loadOverview(dataset), isAdmin(), loadBacktest(dataset)]);
   const latest = rounds[rounds.length - 1];
 
   if (!rounds.length) {
@@ -91,6 +92,12 @@ export default async function DashboardPage() {
           <Stat label="Reached ≥2x" value={pct(stats.reaching["2x"].rate)} sub={`95% CI ${pct(stats.reaching["2x"].lower)}–${pct(stats.reaching["2x"].upper)}`} icon={<Layers />} />
         </RevealItem>
       </RevealGroup>
+
+      {bt.run && bt.evaluation && (
+        <Section className="mt-6 md:mt-8">
+          <ModelPerformance evaluation={bt.evaluation} modelVersion={bt.run.model_version} testWindowRuns={bt.testWindowRuns} />
+        </Section>
+      )}
 
       <SectionTitle hint="Share of all stored rounds per multiplier range">Distribution</SectionTitle>
       <div className="grid gap-6 lg:grid-cols-5">

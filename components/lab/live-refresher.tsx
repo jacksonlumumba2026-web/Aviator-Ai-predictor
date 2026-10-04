@@ -15,30 +15,43 @@ export function LiveRefresher({ isDemo, pollMs = 15_000 }: { isDemo: boolean; po
   const [lastEvent, setLastEvent] = useState<Date | null>(null);
 
   useEffect(() => {
+    let poll: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (poll) return;
+      setMode("polling");
+      poll = setInterval(() => {
+        if (document.visibilityState === "visible") router.refresh();
+      }, pollMs);
+    };
     const sb = getBrowserClient();
-    if (sb) {
-      const filter = `is_demo=eq.${isDemo}`;
-      const channel = sb
-        .channel(`live-${isDemo ? "demo" : "real"}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "aviator_rounds", filter }, () => {
-          setLastEvent(new Date());
-          router.refresh();
-        })
-        .on("postgres_changes", { event: "*", schema: "public", table: "predictions", filter }, () => {
-          setLastEvent(new Date());
-          router.refresh();
-        })
-        .subscribe((status) => {
-          if (status === "SUBSCRIBED") setMode("realtime");
-        });
+    if (!sb) {
+      startPolling();
       return () => {
-        sb.removeChannel(channel);
+        if (poll) clearInterval(poll);
       };
     }
-    const id = setInterval(() => {
-      if (document.visibilityState === "visible") router.refresh();
-    }, pollMs);
-    return () => clearInterval(id);
+    const filter = `is_demo=eq.${isDemo}`;
+    const onChange = () => {
+      setLastEvent(new Date());
+      router.refresh();
+    };
+    const channel = sb
+      .channel(`live-${isDemo ? "demo" : "real"}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "aviator_rounds", filter }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "predictions", filter }, onChange)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (poll) clearInterval(poll);
+          poll = null;
+          setMode("realtime");
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          startPolling(); // never silently stop updating
+        }
+      });
+    return () => {
+      if (poll) clearInterval(poll);
+      sb.removeChannel(channel);
+    };
   }, [isDemo, pollMs, router]);
 
   return (

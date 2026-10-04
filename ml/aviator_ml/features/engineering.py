@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ..config import MIN_HISTORY, N_LAGS, THRESHOLDS, WINDOWS
+from ..config import FEATURE_LOOKBACK, MIN_HISTORY, N_LAGS, STREAK_CAP, THRESHOLDS, WINDOWS
 
 
 def _signed_streak(values: np.ndarray, cut: float) -> np.ndarray:
@@ -74,7 +74,7 @@ def build_feature_frame(multipliers: np.ndarray | list[float], include_next: boo
 
     feats["volatility_ratio_5_20"] = feats["std_log_5"] / (feats["std_log_20"] + 1e-9)
     feats["max_log_20"] = past_log.rolling(20, min_periods=20).max()
-    feats["streak_2x"] = pd.Series(_signed_streak(past.to_numpy(), 2.0))
+    feats["streak_2x"] = pd.Series(np.clip(_signed_streak(past.to_numpy(), 2.0), -STREAK_CAP, STREAK_CAP))
 
     return pd.DataFrame(feats)
 
@@ -93,3 +93,17 @@ def build_targets(multipliers: np.ndarray | list[float]) -> dict[float, np.ndarr
     """Binary targets ``y_k[t] = multiplier[t] >= k`` for every threshold."""
     m = np.asarray(multipliers, dtype=float)
     return {k: (m >= k).astype(int) for k in THRESHOLDS}
+
+
+def next_round_features(history: np.ndarray | list[float]) -> dict[str, float]:
+    """Features for the round *after* ``history`` — using only ``history``.
+
+    This is the single code path used for live estimates and for every
+    walk-forward backtest prediction. Only the last ``FEATURE_LOOKBACK``
+    rounds are needed; results are identical to the full-history frame.
+    """
+    h = np.asarray(history, dtype=float)
+    if len(h) < MIN_HISTORY:
+        raise ValueError(f"need at least {MIN_HISTORY} previous rounds")
+    row = build_feature_frame(h[-FEATURE_LOOKBACK:], include_next=True).iloc[-1]
+    return {k: float(v) for k, v in row.items()}

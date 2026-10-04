@@ -32,9 +32,10 @@ export function SplitTimeline({ splits }: { splits: Record<string, number | stri
         ))}
       </div>
       <p className="mt-4 text-xs leading-relaxed text-ink-3">
-        Never shuffled. Models are selected on validation, then every test round is predicted using a model fit only on earlier rounds
-        (refit every {String(splits.refit_every)} rounds on an expanding window). The first {String(splits.history_rows)} rounds only supply feature
-        history.
+        Never shuffled. Models are selected on validation without access to the test period. The test period is then replayed one round at a
+        time — train on revealed rounds, compute features, predict, record, reveal, advance — refitting every {String(splits.refit_every)} round(s)
+        on an expanding window. The first {String(splits.history_rows)} rounds only supply feature history.
+        {splits.test_fingerprint ? ` Test-window fingerprint: ${String(splits.test_fingerprint)}.` : ""}
       </p>
     </div>
   );

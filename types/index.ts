@@ -37,6 +37,12 @@ export interface Prediction {
   probability_5x: number;
   probability_10x: number;
   baseline: Partial<Record<ThresholdKey, number>> | null;
+  /** Exact model inputs (audit trail). Computed only from rounds before the target round. */
+  features?: Record<string, number> | null;
+  /** Last round the producing model was trained on. */
+  train_end_round_time?: string | null;
+  /** The round being predicted (set when known / resolved). */
+  target_round_time?: string | null;
   confidence: Confidence;
   predicted_class: string;
   actual_multiplier: number | null;
@@ -57,6 +63,7 @@ export interface ModelRunReport {
   selection: Record<string, ThresholdSelection>;
   metrics: Record<string, unknown>;
   feature_names: string[];
+  signal?: import("@/lib/evaluation").SignalLevel;
 }
 
 export interface ModelRun {

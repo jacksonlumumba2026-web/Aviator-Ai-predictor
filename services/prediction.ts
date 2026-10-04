@@ -20,6 +20,7 @@ export async function resolvePendingPredictions(dataset: Dataset): Promise<numbe
     if (!next) continue;
     await repo.updatePrediction(p.id, {
       actual_multiplier: next.multiplier,
+      target_round_time: next.round_time,
       result: primaryResult(p.probability_2x, next.multiplier),
     });
     resolved++;
@@ -66,6 +67,10 @@ export async function generateNextEstimate(dataset: Dataset): Promise<{ predicti
     probability_5x: out.probabilities["5x"],
     probability_10x: out.probabilities["10x"],
     baseline,
+    features: out.features,
+    // The final model was fit on every round of its training run.
+    train_end_round_time: String(run.report.splits.test_end_time ? new Date(String(run.report.splits.test_end_time)).toISOString() : last.round_time),
+    target_round_time: null,
     confidence: out.confidence,
     predicted_class: out.predicted_class,
     actual_multiplier: null,

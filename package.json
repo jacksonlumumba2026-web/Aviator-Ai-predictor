@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "seed:demo": "tsx scripts/generate-demo-data.ts"
+    "seed:demo": "tsx scripts/generate-demo-data.ts",
+    "test:integration": "AAL_INTEGRATION_DB=disposable vitest run --config vitest.integration.config.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

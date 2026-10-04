@@ -21,7 +21,8 @@ from pydantic import BaseModel, Field, field_validator
 from .. import __version__
 from ..config import MIN_HISTORY, THRESHOLDS, load_settings
 from ..models.store import list_versions, load_artifact, save_artifact
-from ..training.experiment import InsufficientDataError, Round, predict_next, run_experiment
+from ..features.engineering import next_round_features
+from ..training.experiment import InsufficientDataError, Round, predict_from_snapshot, predict_next, run_experiment
 
 log = logging.getLogger("aviator_ml")
 settings = load_settings()
@@ -141,6 +142,7 @@ def train(req: TrainRequest) -> dict:
             "models": result.final_models,
             "feature_names": result.feature_names,
             "verdict": result.verdict,
+            "signal": result.signal,
             "confidence": result.confidence,
             "selection": result.selection,
         },
@@ -152,26 +154,60 @@ def train(req: TrainRequest) -> dict:
         "selection": result.selection,
         "metrics": result.metrics,
         "verdict": result.verdict,
+        "signal": result.signal,
         "confidence": result.confidence,
         "feature_names": result.feature_names,
         "test_predictions": result.test_predictions,
     }
 
 
-@app.post("/predict", dependencies=[Depends(require_auth)])
-def predict(req: PredictRequest) -> dict:
+def _artifact(version: str) -> dict:
     try:
-        artifact = load_artifact(settings.artifact_dir, req.model_version)
+        artifact = load_artifact(settings.artifact_dir, version)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     if artifact is None:
         raise HTTPException(404, "model artifact not found — retrain the model")
-    out = predict_next(artifact["models"], req.multipliers)
+    return artifact
+
+
+@app.post("/predict", dependencies=[Depends(require_auth)])
+def predict(req: PredictRequest) -> dict:
+    artifact = _artifact(req.model_version)
+    out = predict_next(artifact["models"], req.multipliers, artifact["feature_names"])
     return {
         "model_version": artifact["version"],
         "dataset": artifact["dataset"],
         **out,
         "confidence": artifact["confidence"],
         "verdict": artifact["verdict"],
+        "signal": artifact.get("signal", "NO_RELIABLE_EDGE"),
         "disclaimer": "Experimental statistical estimate — not a guaranteed prediction.",
     }
+
+
+class ReplayRequest(BaseModel):
+    model_version: str
+    features: dict[str, float]
+
+
+@app.post("/audit/replay", dependencies=[Depends(require_auth)])
+def replay(req: ReplayRequest) -> dict:
+    """Re-run a stored feature snapshot through the stored model artifact."""
+    artifact = _artifact(req.model_version)
+    try:
+        return predict_from_snapshot(artifact["models"], req.features, artifact["feature_names"])
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class FeaturesRequest(BaseModel):
+    multipliers: list[float] = Field(min_length=MIN_HISTORY, max_length=5000)
+
+
+@app.post("/audit/features", dependencies=[Depends(require_auth)])
+def features(req: FeaturesRequest) -> dict:
+    """Recompute next-round features from a history (to check stored snapshots)."""
+    if any(x < 1 or x != x for x in req.multipliers):
+        raise HTTPException(422, "multipliers must be >= 1")
+    return {"features": next_round_features(req.multipliers)}

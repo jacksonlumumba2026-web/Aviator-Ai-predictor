@@ -34,19 +34,21 @@ export async function trainModel(dataset: Dataset): Promise<ModelRun> {
     baseline_accuracy: res.summary.baseline_accuracy,
     verdict: res.verdict,
     confidence: res.confidence,
-    report: { splits: res.splits, selection: res.selection, metrics: res.metrics, feature_names: res.feature_names },
+    report: { splits: res.splits, selection: res.selection, metrics: res.metrics, feature_names: res.feature_names, signal: res.signal },
   });
 
-  const byTime = new Map(rounds.map((r, i) => [r.round_time, i]));
+  const iso = (t: string) => new Date(t).toISOString();
   const rows: NewPrediction[] = res.test_predictions.map((p) => {
-    const idx = byTime.get(new Date(p.round_time).toISOString());
     return {
-      prediction_time: new Date(p.round_time).toISOString(),
+      prediction_time: iso(p.round_time),
+      target_round_time: iso(p.round_time),
+      train_end_round_time: iso(p.train_end_round_time),
+      features: p.features,
       model_version: run.model_version,
       model_run_id: run.id,
       kind: "backtest",
       is_demo: dataset === "demo",
-      based_on_round_time: idx !== undefined && idx > 0 ? rounds[idx - 1].round_time : null,
+      based_on_round_time: iso(p.based_on_round_time),
       probability_1_5x: p.probabilities["1.5x"],
       probability_2x: p.probabilities["2x"],
       probability_3x: p.probabilities["3x"],

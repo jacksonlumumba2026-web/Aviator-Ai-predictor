@@ -59,3 +59,38 @@ describe("helpers", () => {
     expect(primaryResult(0.49, 2.0)).toBe("incorrect");
   });
 });
+
+import { classifySignal, type ThresholdEvaluation } from "../evaluation";
+
+describe("baseline metrics + stability parity with Python", () => {
+  const r = evaluateThreshold(Y, P, B, 5);
+  it("matches Python fixture values", () => {
+    expect(r.baseline_precision).toBe(0.5);
+    expect(r.baseline_recall).toBe(1);
+    expect(r.baseline_f1).toBeCloseTo(0.6666666666666666, 12);
+    expect(r.baseline_ece).toBeCloseTo(0, 12);
+    expect(r.baseline_roc_auc).toBe(0.5);
+    const r0 = evaluateThreshold(Y, P, new Array(12).fill(0.2), 5);
+    expect(r0.baseline_precision).toBeNull();
+    expect(r0.baseline_f1).toBe(0);
+    expect(r.stability.first_half_bss).toBeCloseTo(0.6116666666666666, 12);
+    expect(r.stability.second_half_bss).toBeCloseTo(0.20333333333333325, 12);
+  });
+});
+
+describe("classifySignal (mirrors Python)", () => {
+  const row = (verdict: ThresholdEvaluation["verdict"], o: Partial<ThresholdEvaluation> = {}) =>
+    ({ verdict, brier_p_value: 0.5, brier_skill_score: 0, roc_auc: 0.5, n: 500, stability: { first_half_bss: 0, second_half_bss: 0 }, ...o }) as ThresholdEvaluation;
+  const none = { "1.5x": row("no_edge"), "2x": row("no_edge"), "3x": row("no_edge") };
+  it("classifies conservatively", () => {
+    expect(classifySignal(none)).toBe("NO_RELIABLE_EDGE");
+    expect(classifySignal({ ...none, "2x": row("no_edge", { brier_p_value: 0.03, brier_skill_score: 0.004, roc_auc: 0.52 }) })).toBe("WEAK_SIGNAL");
+    expect(classifySignal({ ...none, "2x": row("edge_detected") })).toBe("PROMISING_SIGNAL");
+    const rep = { n: 1500, stability: { first_half_bss: 0.01, second_half_bss: 0.02 } };
+    expect(classifySignal({ ...none, "2x": row("edge_detected", rep), "3x": row("edge_detected", rep) })).toBe("STRONGER_SIGNAL");
+    expect(
+      classifySignal({ ...none, "2x": row("edge_detected", rep), "3x": row("edge_detected", { n: 1500, stability: { first_half_bss: 0.02, second_half_bss: -0.01 } }) }),
+    ).toBe("PROMISING_SIGNAL");
+    expect(classifySignal({ "2x": row("insufficient_data") })).toBe("INSUFFICIENT_DATA");
+  });
+});

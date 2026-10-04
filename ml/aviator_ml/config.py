@@ -18,6 +18,13 @@ N_LAGS = 10
 # Rows before this index lack a full feature history and are dropped.
 MIN_HISTORY = max(WINDOWS)
 
+# Streak lengths are capped so features depend on a bounded look-back; this
+# makes features computed from a truncated history identical to those from
+# the full history (live prediction == backtest == training).
+STREAK_CAP = 50
+# Rounds of history needed to compute next-round features exactly.
+FEATURE_LOOKBACK = 200
+
 # Minimum number of usable rows to run an experiment at all.
 MIN_ROUNDS = 300
 

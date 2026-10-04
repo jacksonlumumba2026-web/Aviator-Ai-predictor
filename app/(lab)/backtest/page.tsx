@@ -4,6 +4,8 @@ import { FlaskConical } from "lucide-react";
 import { CalibrationChart } from "@/components/charts/calibration-chart";
 import { ConfusionMatrix } from "@/components/charts/confusion-matrix";
 import { SplitTimeline } from "@/components/lab/split-timeline";
+import { BaselineComparison } from "@/components/lab/baseline-comparison";
+import { ModelPerformance } from "@/components/lab/model-performance";
 import { ValidationPanel, VerdictChip } from "@/components/lab/validation-panel";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
@@ -26,7 +28,7 @@ export default async function BacktestPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const target = (THRESHOLDS.find((t) => t.key === sp.target)?.key ?? "2x") as ThresholdKey;
   const dataset = await getDataset();
-  const [{ run, rows, evaluation }, liveRows] = await Promise.all([
+  const [{ run, rows, evaluation, testWindowRuns }, liveRows] = await Promise.all([
     loadBacktest(dataset),
     getRepository().allPredictions({ dataset, kind: "live" }),
   ]);
@@ -54,6 +56,10 @@ export default async function BacktestPage({ searchParams }: { searchParams: Pro
         description="For every test round the model saw only earlier rounds, produced a probability, and was then scored against the revealed multiplier. Every number below is recomputed from those stored prediction rows."
       />
 
+      <Section>
+        <ModelPerformance evaluation={evaluation} modelVersion={run.model_version} testWindowRuns={testWindowRuns} showLink={false} />
+      </Section>
+
       <RevealGroup className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {[
           ["Predictions", int(evaluation.total), "stored test rows"],
@@ -72,6 +78,11 @@ export default async function BacktestPage({ searchParams }: { searchParams: Pro
       <SectionTitle>Validation</SectionTitle>
       <Section>
         <ValidationPanel evaluation={evaluation} source={`${int(rows.length)} stored backtest predictions`} />
+      </Section>
+
+      <SectionTitle hint="Green = better than baseline, red = worse; differences alone are not evidence">Model vs baseline, every target</SectionTitle>
+      <Section>
+        <BaselineComparison evaluation={evaluation} />
       </Section>
 
       <SectionTitle hint="Choose a target">Calibration &amp; errors</SectionTitle>

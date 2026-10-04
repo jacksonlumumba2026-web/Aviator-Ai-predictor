@@ -106,7 +106,12 @@ def fit_safely(factory: Callable[[], BaseEstimator], X, y) -> BaseEstimator:  # 
     y = np.asarray(y)
     if len(np.unique(y)) < 2:
         return ConstantProbability().fit(X, y)
-    return factory().fit(X, y)
+    model = factory().fit(X, y)
+    # Fit in parallel, but predict single-threaded: walk-forward predicts one
+    # row at a time and a thread pool per call costs ~100x the prediction.
+    if hasattr(model, "n_jobs"):
+        model.set_params(n_jobs=1)
+    return model
 
 
 def positive_proba(model: BaseEstimator, X) -> np.ndarray:  # noqa: N803
