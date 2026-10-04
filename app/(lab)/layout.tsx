@@ -15,7 +15,7 @@ export default async function LabLayout({ children }: { children: React.ReactNod
     getLiveStatus(),
   ]);
   return (
-    <Shell dataset={dataset} counts={{ real, demo, test }} storage={repo.kind} liveConnected={live.connected && dataset === "real"}>
+    <Shell dataset={dataset} counts={{ real, demo, test }} storage={repo.kind} liveConnected={live.connected && dataset === "real"} storageUnconfigured={repo.kind === "local" && process.env.NODE_ENV === "production"}>
       {children}
     </Shell>
   );

@@ -262,11 +262,41 @@ set). Requests are rate-limited per client. Artifacts are saved as joblib files 
 
 ## Deployment
 
-- **Frontend → Vercel.** Import the repo and set the env vars from `.env.example`.
-  `/api/models/train` uses `maxDuration = 300`.
-- **ML service → any container host** (Fly, Render, Railway, Cloud Run):
-  `docker build -t aviator-ml ml/`. Set `ML_SERVICE_TOKEN` and `ML_ARTIFACT_DIR` on a
-  persistent volume, then point `ML_SERVICE_URL` at it.
+### Frontend → Vercel
+
+The Vercel project builds this repository with the Next.js preset (`next build`, Node ≥ 20.9).
+Set these environment variables in Vercel → Project → Settings → Environment Variables:
+
+| Variable | Scope | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | all | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | all | read-only Realtime (RLS enforced) |
+| `SUPABASE_SERVICE_ROLE_KEY` | server, **sensitive** | all writes (never exposed to the browser) |
+| `ADMIN_PASSWORD`, `SESSION_SECRET` | sensitive | admin sign-in; without them production is **read-only** |
+| `ML_SERVICE_URL`, `ML_SERVICE_TOKEN` | sensitive | the separately hosted Python service |
+| `INGEST_API_KEY` | sensitive | optional authorised live ingestion |
+
+Without Supabase, a deployment renders read-only and empty and shows a red "Storage not
+configured" banner. The local JSON store is development-only, and on Vercel it never pretends
+to persist.
+
+Apply the database schema to your Supabase project, in order:
+1. `supabase/migrations/20261004000000_init.sql`
+2. `supabase/migrations/20261004100000_prediction_audit.sql`
+3. `supabase/migrations/20261005000000_dataset_provenance.sql`
+
+### ML service → any container host
+
+The ML service needs long-running jobs and a persistent disk for model artifacts and protocol
+jobs, so it is **not** a good fit for serverless functions. Use Fly.io, Render, Railway or Cloud
+Run:
+
+```bash
+docker build -t aviator-ml ml/
+```
+
+Then set `ML_SERVICE_TOKEN` and `ML_ARTIFACT_DIR` on a persistent volume, and point
+`ML_SERVICE_URL` at the service. `/api/models/train` uses `maxDuration = 300`.
 
 ## Testing & audit
 

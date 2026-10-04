@@ -16,6 +16,7 @@ export interface ShellProps {
   counts: Record<Dataset, number>;
   storage: "supabase" | "local";
   liveConnected: boolean;
+  storageUnconfigured?: boolean;
   children: React.ReactNode;
 }
 
@@ -133,6 +134,11 @@ export function Shell(props: ShellProps) {
         )}
       </AnimatePresence>
 
+      {props.storageUnconfigured && (
+        <div role="alert" className="border-b border-bad/40 bg-bad/[0.1] px-4 py-2 text-center text-xs font-semibold text-bad-ink">
+          Storage not configured — this deployment is read-only and empty. Set the Supabase environment variables (see README → Deployment).
+        </div>
+      )}
       <div className="sticky top-[65px] z-20 bg-bg/90 backdrop-blur-xl lg:top-0">
         <ProvenanceBar dataset={dataset} rounds={props.counts[dataset]} />
       </div>

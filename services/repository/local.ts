@@ -4,6 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { DataSource, Dataset, ImportBatch, ModelRun, Prediction, Round, ValidationRun } from "@/types";
 import type { PredictionFilter, Repository, RoundFilter } from "./types";
+import { HttpError } from "@/lib/http";
 
 /**
  * JSON-file store used ONLY when Supabase is not configured, so the lab can be
@@ -54,6 +55,10 @@ export class LocalRepository implements Repository {
   }
 
   private async mutate<T>(fn: (d: StoreData) => T): Promise<T> {
+    if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+      // Serverless filesystems are read-only/ephemeral: never pretend to persist.
+      throw new HttpError(503, "Storage is not configured: set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server.");
+    }
     const run = this.queue.then(async () => {
       const d = await this.load();
       const out = fn(d);
