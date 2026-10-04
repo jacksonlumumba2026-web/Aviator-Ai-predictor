@@ -61,7 +61,7 @@ function RunResult({ run, title }: { run: ValidationRun; title: string }) {
               <p className="mt-2 text-base font-semibold text-ink md:text-lg">{r.conclusion}</p>
             </div>
             <div className="-mx-6 overflow-x-auto scrollbar-thin">
-              <table className="w-full min-w-[1100px] text-sm tabular">
+              <table className="w-full min-w-[1100px] text-sm whitespace-nowrap tabular">
                 <caption className="sr-only">Per-target results with Holm correction</caption>
                 <thead className="text-[10px] tracking-[0.1em] text-ink-3 uppercase">
                   <tr className="border-y border-line">
